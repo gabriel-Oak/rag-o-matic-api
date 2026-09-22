@@ -22,6 +22,8 @@ export default function buildRoutes(
       }
     }
     path = path[0].toLocaleLowerCase() + path.substring(1).replace(/[A-Z]/g, (i) => `-${i.toLowerCase()}`);
+    // strip dash artifact right after the leading slash ("/-foo-bar" -> "/foo-bar")
+    path = path.startsWith('/-') ? `/${path.slice(2)}` : path;
     registerController(path, controller, app);
   });
 }
