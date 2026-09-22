@@ -4,3 +4,7 @@ dist
 tmp
 .plans
 coverage
+.git
+.husky
+docker-compose.yml
+Dockerfile
