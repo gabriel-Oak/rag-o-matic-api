@@ -1,2 +1,4 @@
 .plans
 .plans/
+.env
+tmp/
