@@ -2,3 +2,6 @@
 .plans/
 .env
 tmp/
+node_modules/
+dist/
+coverage/
