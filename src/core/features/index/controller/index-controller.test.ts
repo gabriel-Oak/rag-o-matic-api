@@ -118,6 +118,26 @@ describe("IndexController (POST /index)", () => {
     await app.close();
   });
 
+  it("returns 400 without calling the usecase when source is missing", async () => {
+    const execute = vi.fn();
+    const app = createApp(execute);
+    const res = await app.inject({
+      method: "POST",
+      url: "/index",
+      payload: {
+        type: "markdown",
+        content: Buffer.from("hello", "utf8").toString("base64"),
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = res.json();
+    expect(body.message).toBe("invalid request body");
+    expect(body.statusCode).toBe(400);
+    expect(execute).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it("returns 400 without calling the usecase when content is not valid base64", async () => {
     const execute = vi.fn();
     const app = createApp(execute);

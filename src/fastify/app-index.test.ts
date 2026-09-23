@@ -22,11 +22,27 @@ vi.mock('../core/utils/services/ollama/ollama-service.js', async () => {
 
   class MockOllamaService {
     async embed(inputs: string[]) {
-      return new Right(inputs.map(() => [0.1, 0.2, 0.3]));
+      return new Right(
+        inputs.map(() => new Array<number>(env.QDRANT_DIMENSION).fill(0.1)),
+      );
     }
   }
 
   return { default: MockOllamaService };
+});
+
+vi.mock('../core/utils/services/qdrant/index.js', async () => {
+  const { Right } = await import('../core/utils/types.js');
+
+  return {
+    createQdrantService: () => ({
+      ensureCollection: async () => new Right(undefined),
+      upsertPoints: async () => new Right(undefined),
+      queryPoints: async () => new Right([]),
+      deletePointsByFilter: async () => new Right(undefined),
+      close: async () => undefined,
+    }),
+  };
 });
 
 const markdown = '# Hello\n\nThis is a small paragraph.\n';
@@ -46,7 +62,7 @@ describe('POST /index (real app, Ollama mocked)', () => {
     expect(body.model).toBe('bge-m3');
     expect(body.source).toBe('note.md');
     expect(body.chunkCount).toBeGreaterThanOrEqual(1);
-    expect(body.upserted).toBe(0);
+    expect(body.upserted).toBe(body.chunkCount);
   });
 
   it('rejects a body larger than 10 MB with 413', async () => {
