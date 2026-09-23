@@ -24,7 +24,7 @@ src/
 │       ├── services/   # ollama (embeddings), qdrant (vetores), http, logger
 │       ├── controller/ # decorators (@Controller, @Get, @Post...) + build-routes
 │       └── errors/     # HttpError / BaseError
-└── core/features/  # indexação (draft) e query de notas
+└── core/features/  # indexação e query de notas
 ```
 
 Padrão **drink-it**: controllers via decorators + use cases + resultados
@@ -87,16 +87,18 @@ Os defaults do `.env.example` já apontam para `localhost:11434` e
 | Método | Rota      | Descrição                        |
 | ------ | --------- | -------------------------------- |
 | GET    | `/health` | Health check → `{"status":"ok"}` |
-| POST   | `/index`  | Inspeção do pipeline de indexação (draft) — veja abaixo |
+| POST   | `/index`  | Indexa conteúdo (markdown/PDF) — chunks + embeddings persistidos no Qdrant; veja abaixo |
 
-#### `POST /index` — inspeção do pipeline (draft)
+#### `POST /index` — indexação de conteúdo
 
 Agnóstico de formato: recebe **markdown ou PDF** (bytes originais em
 **base64** no body JSON), extrai o texto, faz chunking markdown-aware,
-gera embeddings via Ollama e **retorna tudo no response**.
+gera embeddings via Ollama e **persiste os pontos no Qdrant**
+(collection `vault_notes`, 1024 dimensões, distância Cosine). O response
+é um **resumo** da operação.
 
-**Nota: draft — sem persistência no Qdrant ainda** (endpoint de inspeção
-do pipeline; a persistência entra depois).
+**`source` é obrigatório**: identidade do documento no índice. Re-index do
+mesmo `source` sobrescreve os pontos existentes (delete-then-upsert).
 
 Body (JSON):
 
@@ -104,7 +106,7 @@ Body (JSON):
 | ------------------------ | -------------------- | ----------- | ---------------------------------------------------- |
 | `type`                   | `"markdown" \| "pdf"` | sim         | Formato do conteúdo (explícito, não inferido)        |
 | `content`                | string (base64)      | sim         | `base64 < nota.md>` ou `base64 < doc.pdf>`           |
-| `source`                 | string               | não         | Echo no response                                     |
+| `source`                 | string               | sim         | Identidade do documento no índice (re-index sobrescreve) |
 | `chunking.maxChunkChars` | int > 0              | não         | Default `1500`                                       |
 | `chunking.overlapChars`  | int > 0              | não         | Default `200`; deve ser `< maxChunkChars`            |
 
@@ -117,34 +119,27 @@ Response (200):
   "source": "nota.md",
   "type": "markdown",
   "model": "bge-m3",
-  "chunkCount": 2,
-  "chunks": [
-    {
-      "index": 0,
-      "headings": ["# Nota", "## Setup"],
-      "content": "## Setup\n\nConteúdo da seção...",
-      "charCount": 123,
-      "metadata": { "frontmatter": "tags: [rag]" },
-      "embedding": [0.01, -0.3, "..."]
-    }
-  ]
+  "chunkCount": 5,
+  "upserted": 5
 }
 ```
 
-- `source` — omitido se não enviado no request
+- `source` — echo do `source` enviado no request
 - `model` — `OLLAMA_EMBEDDING_MODEL` do env
-- `headings` — trilha de headings da seção (PDF → `[]`)
-- `metadata.frontmatter` — apenas markdown com frontmatter Obsidian
-  (PDF, ou sem frontmatter → `metadata: {}`)
+- `chunkCount` — chunks gerados pelo chunking
+- `upserted` — pontos upsertados no Qdrant (1 por chunk)
 
 Status codes:
 
 | Código | Caso                                                                                       |
 | ------ | ------------------------------------------------------------------------------------------ |
-| `200`  | ok                                                                                         |
-| `400`  | body inválido (schema) / zero chunks                                                       |
-| `422`  | extração falhou (PDF corrompido / sem texto extraível — OCR fora de escopo)               |
-| `502`  | Ollama indisponível / response inválida                                                    |
+| `200`  | ok (resumo da indexação)                                                                   |
+| `400`  | body inválido (schema) / `type` inválida / `content` não-base64 / `source` ausente / zero chunks |
+| `413`  | body maior que 10 MB                                                                       |
+| `422`  | extração falhou (ex.: PDF corrompido — OCR fora de escopo) OU dimension mismatch: `"embedding dimension mismatch (expected X, got Y)"` |
+| `502`  | Ollama ou Qdrant falharam                                                                  |
+
+**Nota: busca (`POST /query`) ainda não existe** — plano futuro.
 
 ### MCP (Streamable HTTP)
 
@@ -211,6 +206,7 @@ curl -s -X POST http://localhost:8080/index \
   -H 'content-type: application/json' \
   -d "{
     \"type\": \"markdown\",
+    \"source\": \"nota.md\",
     \"content\": \"$(base64 -w 0 < nota.md)\",
     \"chunking\": { \"maxChunkChars\": 800, \"overlapChars\": 100 }
   }"
@@ -264,7 +260,7 @@ npm run build     # tsc → dist/
 
 Base pronta: app Fastify, serviços (Ollama, Qdrant, http, logger),
 servidor MCP com tool `health`, Docker + compose, testes, `POST /index`
-(draft — inspeção do pipeline, sem Qdrant).
+(produção — persiste chunks + embeddings no Qdrant).
 
-Backlog (próximas tasks): persistência no Qdrant, `GET /query`,
-tools MCP de feature (index/query). Ver nota do vault: `RAG Obsidian.md`.
+Backlog (próximas tasks): `POST /query`, tools MCP de feature
+(index/query). Ver nota do vault: `RAG Obsidian.md`.
