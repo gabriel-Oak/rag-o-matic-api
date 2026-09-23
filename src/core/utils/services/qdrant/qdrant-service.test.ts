@@ -73,20 +73,32 @@ function makeService(client: FakeQdrantClient) {
 }
 
 describe("QdrantService constructor", () => {
-  it("builds the client from the env url when no client is passed", () => {
+  it("does not create the client or read env until first use", () => {
     vi.mocked(getEnv).mockReturnValue(env);
 
     new QdrantService(fakeLogger());
 
-    expect(QdrantClient).toHaveBeenCalledWith({ url: QDRANT_URL });
+    expect(QdrantClient).not.toHaveBeenCalled();
+    expect(getEnv).not.toHaveBeenCalled();
   });
 
-  it("includes the apiKey only when it is set", () => {
+  it("builds the client from the env url on first use", async () => {
+    vi.mocked(getEnv).mockReturnValue(env);
+    const service = new QdrantService(fakeLogger());
+
+    await service.ensureCollection();
+
+    expect(QdrantClient).toHaveBeenCalledTimes(1);
+    expect(QdrantClient).toHaveBeenLastCalledWith({ url: QDRANT_URL });
+  });
+
+  it("includes the apiKey only when it is set", async () => {
     vi.mocked(getEnv).mockReturnValue({
       ...env,
       QDRANT_API_KEY: "secret-key",
     });
-    new QdrantService(fakeLogger());
+    const service = new QdrantService(fakeLogger());
+    await service.ensureCollection();
     expect(QdrantClient).toHaveBeenCalledWith({
       url: QDRANT_URL,
       apiKey: "secret-key",
@@ -94,7 +106,8 @@ describe("QdrantService constructor", () => {
 
     vi.mocked(QdrantClient).mockClear();
     vi.mocked(getEnv).mockReturnValue(env);
-    new QdrantService(fakeLogger());
+    const other = new QdrantService(fakeLogger());
+    await other.ensureCollection();
     expect(QdrantClient).toHaveBeenCalledWith({ url: QDRANT_URL });
   });
 
@@ -337,5 +350,13 @@ describe("QdrantService.close", () => {
     const { service } = makeService(client);
 
     await expect(service.close()).resolves.toBeUndefined();
+  });
+
+  it("is a no-op when no client was ever created", async () => {
+    vi.mocked(getEnv).mockReturnValue(env);
+    const service = new QdrantService(fakeLogger());
+
+    await expect(service.close()).resolves.toBeUndefined();
+    expect(QdrantClient).not.toHaveBeenCalled();
   });
 });

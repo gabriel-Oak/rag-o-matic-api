@@ -12,7 +12,7 @@ type QdrantClientWithClose = QdrantClient & {
 };
 
 export default class QdrantService implements IQdrantService {
-  private readonly client: QdrantClient;
+  private client?: QdrantClient;
 
   constructor(
     private readonly logger: ILoggerService,
@@ -20,21 +20,25 @@ export default class QdrantService implements IQdrantService {
   ) {
     if (client) {
       this.client = client;
-      return;
     }
+  }
 
-    const { QDRANT_URL, QDRANT_API_KEY } = getEnv();
-    this.client = new QdrantClient({
-      url: QDRANT_URL,
-      ...(QDRANT_API_KEY ? { apiKey: QDRANT_API_KEY } : {}),
-    });
+  private getClient(): QdrantClient {
+    if (!this.client) {
+      const { QDRANT_URL, QDRANT_API_KEY } = getEnv();
+      this.client = new QdrantClient({
+        url: QDRANT_URL,
+        ...(QDRANT_API_KEY ? { apiKey: QDRANT_API_KEY } : {}),
+      });
+    }
+    return this.client;
   }
 
   async ensureCollection(): Promise<Either<QdrantError, void>> {
     const { QDRANT_COLLECTION, QDRANT_DIMENSION } = getEnv();
 
     try {
-      await this.client.getCollection(QDRANT_COLLECTION);
+      await this.getClient().getCollection(QDRANT_COLLECTION);
       return new Right(undefined);
     } catch (e) {
       if (!this.isCollectionNotFound(e)) {
@@ -47,7 +51,7 @@ export default class QdrantService implements IQdrantService {
       }
 
       try {
-        await this.client.createCollection(QDRANT_COLLECTION, {
+        await this.getClient().createCollection(QDRANT_COLLECTION, {
           vectors: { size: QDRANT_DIMENSION, distance: "Cosine" },
         });
         return new Right(undefined);
@@ -68,7 +72,7 @@ export default class QdrantService implements IQdrantService {
     const { QDRANT_COLLECTION } = getEnv();
 
     try {
-      await this.client.upsert(QDRANT_COLLECTION, {
+      await this.getClient().upsert(QDRANT_COLLECTION, {
         points: points.map((point) => ({
           id: point.id,
           vector: point.vector,
@@ -93,7 +97,7 @@ export default class QdrantService implements IQdrantService {
     const { QDRANT_COLLECTION } = getEnv();
 
     try {
-      const response = await this.client.query(QDRANT_COLLECTION, {
+      const response = await this.getClient().query(QDRANT_COLLECTION, {
         query: vector,
         limit,
         with_payload: true,
@@ -127,7 +131,7 @@ export default class QdrantService implements IQdrantService {
     const { QDRANT_COLLECTION } = getEnv();
 
     try {
-      await this.client.delete(QDRANT_COLLECTION, {
+      await this.getClient().delete(QDRANT_COLLECTION, {
         filter: filter as Schemas["Filter"],
       });
       return new Right(undefined);
@@ -142,6 +146,10 @@ export default class QdrantService implements IQdrantService {
   }
 
   async close(): Promise<void> {
+    if (!this.client) {
+      return;
+    }
+
     const client = this.client as QdrantClientWithClose;
     if (typeof client.close === "function") {
       await client.close();
