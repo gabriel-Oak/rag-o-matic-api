@@ -46,8 +46,7 @@ describe('POST /index (real app, Ollama mocked)', () => {
     expect(body.model).toBe('bge-m3');
     expect(body.source).toBe('note.md');
     expect(body.chunkCount).toBeGreaterThanOrEqual(1);
-    expect(body.chunks[0].embedding).toEqual([0.1, 0.2, 0.3]);
-    expect(body.chunks[0].charCount).toBe(body.chunks[0].content.length);
+    expect(body.upserted).toBe(0);
   });
 
   it('rejects a body larger than 10 MB with 413', async () => {

@@ -47,11 +47,16 @@ function markdownRequest(
   content: string,
   extra: Partial<IndexRequest> = {}
 ): IndexRequest {
-  return { type: "markdown", content: b64(content), ...extra };
+  return {
+    type: "markdown",
+    content: b64(content),
+    source: "test.md",
+    ...extra,
+  };
 }
 
 describe("IndexContentUsecase.execute", () => {
-  it("returns full shape for markdown with frontmatter, embedding inputs prefixed with frontmatter", async () => {
+  it("returns summary shape for markdown with frontmatter, embedding inputs prefixed with frontmatter", async () => {
     vi.mocked(getEnv).mockReturnValue(env);
     const frontmatter = "tags: [rag]";
     const markdown = `---\n${frontmatter}\n---\n\n# Title\n\nText here.`;
@@ -59,31 +64,25 @@ describe("IndexContentUsecase.execute", () => {
     const embed = vi.fn().mockResolvedValue(new Right([[...embedding]]));
     const { usecase, embed: embedMock } = makeUsecase(embed);
 
-    const result = await usecase.execute(markdownRequest(markdown));
+    const result = await usecase.execute(
+      markdownRequest(markdown, { source: "doc.md" })
+    );
 
     expect(result.isError).toBe(false);
     if (result.isError) throw result.error;
+    expect(result.success.source).toBe("doc.md");
     expect(result.success.model).toBe("bge-m3");
     expect(result.success.type).toBe("markdown");
-    expect(result.success.chunkCount).toBe(result.success.chunks.length);
     expect(result.success.chunkCount).toBe(1);
+    expect(result.success.upserted).toBe(0);
 
-    const chunk = result.success.chunks[0];
-    expect(chunk.index).toBe(0);
-    expect(chunk.headings).toEqual(["# Title"]);
-    expect(chunk.metadata.frontmatter).toBe(frontmatter);
-    expect(chunk.charCount).toBe(chunk.content.length);
-    expect(chunk.embedding).toEqual(embedding);
-
-    expect(embedMock).toHaveBeenCalledWith(
-      result.success.chunks.map((c) => frontmatter + "\n\n" + c.content)
-    );
-    expect(embedMock.mock.calls[0][0][0]).toBe(
-      frontmatter + "\n\n" + chunk.content
-    );
+    expect(embedMock).toHaveBeenCalledTimes(1);
+    const [inputs] = embedMock.mock.calls[0];
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0].startsWith(frontmatter + "\n\n")).toBe(true);
   });
 
-  it("omits the frontmatter key from metadata when markdown has no frontmatter", async () => {
+  it("does not prefix embedding inputs when markdown has no frontmatter", async () => {
     vi.mocked(getEnv).mockReturnValue(env);
     const markdown = "# Title\n\nText here.";
     const embed = vi.fn().mockResolvedValue(new Right([[1, 2, 3]]));
@@ -93,14 +92,13 @@ describe("IndexContentUsecase.execute", () => {
 
     expect(result.isError).toBe(false);
     if (result.isError) throw result.error;
-    expect(result.success.chunks).toHaveLength(1);
-    const chunk = result.success.chunks[0];
-    expect(chunk.metadata).toEqual({});
-    expect("frontmatter" in chunk.metadata).toBe(false);
+    expect(result.success.chunkCount).toBe(1);
+    expect(result.success.upserted).toBe(0);
 
-    expect(embedMock).toHaveBeenCalledWith(
-      result.success.chunks.map((c) => c.content)
-    );
+    expect(embedMock).toHaveBeenCalledTimes(1);
+    const [inputs] = embedMock.mock.calls[0];
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0].startsWith("# Title")).toBe(true);
   });
 
   it("returns Left(HttpError 422) when extractText fails", async () => {
@@ -111,6 +109,7 @@ describe("IndexContentUsecase.execute", () => {
     const result = await usecase.execute({
       type: "pdf",
       content: Buffer.from("not a pdf").toString("base64"),
+      source: "doc.pdf",
     });
 
     expect(result.isError).toBe(true);
@@ -167,22 +166,4 @@ describe("IndexContentUsecase.execute", () => {
     expect(result.error.statusCode).toBe(422);
   });
 
-  it("echoes source when present and omits the key when absent", async () => {
-    vi.mocked(getEnv).mockReturnValue(env);
-    const markdown = "# Title\n\nText here.";
-    const embed = vi.fn().mockResolvedValue(new Right([[1, 2, 3]]));
-    const { usecase } = makeUsecase(embed);
-
-    const withSource = await usecase.execute(
-      markdownRequest(markdown, { source: "doc.md" })
-    );
-    expect(withSource.isError).toBe(false);
-    if (withSource.isError) throw withSource.error;
-    expect(withSource.success.source).toBe("doc.md");
-
-    const withoutSource = await usecase.execute(markdownRequest(markdown));
-    expect(withoutSource.isError).toBe(false);
-    if (withoutSource.isError) throw withoutSource.error;
-    expect("source" in withoutSource.success).toBe(false);
-  });
 });

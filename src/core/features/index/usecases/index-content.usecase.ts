@@ -71,18 +71,11 @@ export default class IndexContentUsecase {
     }
 
     const result: IndexResult = {
-      ...(req.source ? { source: req.source } : {}),
+      source: req.source,
       type: req.type,
       model: getEnv().OLLAMA_EMBEDDING_MODEL,
       chunkCount: chunks.length,
-      chunks: chunks.map((chunk, index) => ({
-        index,
-        headings: chunk.headings,
-        content: chunk.content,
-        charCount: chunk.content.length,
-        metadata: frontmatter ? { frontmatter } : {},
-        embedding: embeddings.success[index],
-      })),
+      upserted: 0,
     };
 
     return new Right(result);

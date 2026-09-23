@@ -10,6 +10,7 @@ describe("indexRequestSchema", () => {
     const result = indexRequestSchema.safeParse({
       type: "markdown",
       content: "@@@@",
+      source: "doc.md",
     });
     expect(result.success).toBe(false);
   });
@@ -18,12 +19,33 @@ describe("indexRequestSchema", () => {
     const result = indexRequestSchema.safeParse({
       type: "docx",
       content: base64("x"),
+      source: "doc.md",
     });
     expect(result.success).toBe(false);
   });
 
   it("rejects missing content", () => {
-    const result = indexRequestSchema.safeParse({ type: "markdown" });
+    const result = indexRequestSchema.safeParse({
+      type: "markdown",
+      source: "doc.md",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects missing source", () => {
+    const result = indexRequestSchema.safeParse({
+      type: "markdown",
+      content: base64("x"),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects empty source", () => {
+    const result = indexRequestSchema.safeParse({
+      type: "markdown",
+      content: base64("x"),
+      source: "",
+    });
     expect(result.success).toBe(false);
   });
 
@@ -31,6 +53,7 @@ describe("indexRequestSchema", () => {
     const result = indexRequestSchema.safeParse({
       type: "markdown",
       content: base64("x"),
+      source: "doc.md",
       chunking: { maxChunkChars: 100, overlapChars: 100 },
     });
     expect(result.success).toBe(false);
@@ -40,6 +63,7 @@ describe("indexRequestSchema", () => {
     const result = indexRequestSchema.safeParse({
       type: "markdown",
       content: base64("x"),
+      source: "doc.md",
       chunking: { maxChunkChars: -1 },
     });
     expect(result.success).toBe(false);
@@ -49,6 +73,7 @@ describe("indexRequestSchema", () => {
     const result = indexRequestSchema.safeParse({
       type: "markdown",
       content: base64("x"),
+      source: "doc.md",
       chunking: { maxChunkChars: 10.5 },
     });
     expect(result.success).toBe(false);
@@ -58,6 +83,7 @@ describe("indexRequestSchema", () => {
     const result = indexRequestSchema.safeParse({
       type: "markdown",
       content: base64("x"),
+      source: "doc.md",
       chunking: { overlapChars: 2000 },
     });
     expect(result.success).toBe(false);
@@ -67,6 +93,7 @@ describe("indexRequestSchema", () => {
     const result = indexRequestSchema.safeParse({
       type: "markdown",
       content: base64("x"),
+      source: "doc.md",
     });
     expect(result.success).toBe(true);
   });

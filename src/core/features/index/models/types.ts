@@ -13,7 +13,7 @@ export class ExtractError extends BaseError {
 export const indexRequestSchema = z.object({
   type: z.literal("markdown").or(z.literal("pdf")),
   content: z.base64(),
-  source: z.string().optional(),
+  source: z.string().min(1),
   chunking: z
     .object({
       maxChunkChars: z.number().int().positive().optional(),
@@ -36,19 +36,10 @@ export const indexRequestSchema = z.object({
 
 export type IndexRequest = z.infer<typeof indexRequestSchema>;
 
-export interface Chunk {
-  index: number;
-  headings: string[];
-  content: string;
-  charCount: number;
-  metadata: { frontmatter?: string };
-  embedding: number[];
-}
-
 export interface IndexResult {
-  source?: string;
+  source: string;
   type: "markdown" | "pdf";
   model: string;
   chunkCount: number;
-  chunks: Chunk[];
+  upserted: number;
 }

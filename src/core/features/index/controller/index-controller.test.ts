@@ -16,24 +16,17 @@ vi.mock("../../../utils/services/logger/index.js", () => ({
 }));
 
 const indexResult: IndexResult = {
+  source: "doc.md",
   type: "markdown",
   model: "bge-m3",
   chunkCount: 1,
-  chunks: [
-    {
-      index: 0,
-      headings: ["# Title"],
-      content: "# Title\n\nhello",
-      charCount: 15,
-      metadata: {},
-      embedding: [0.1, 0.2],
-    },
-  ],
+  upserted: 1,
 };
 
 const validBody = {
   type: "markdown",
   content: Buffer.from("hello", "utf8").toString("base64"),
+  source: "doc.md",
 };
 
 type Execute = (
@@ -61,7 +54,6 @@ describe("IndexController (POST /index)", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual(indexResult);
-    expect(res.json().chunks[0].embedding).toEqual([0.1, 0.2]);
     expect(execute).toHaveBeenCalledTimes(1);
     expect(execute).toHaveBeenCalledWith(validBody);
     await app.close();
