@@ -2,8 +2,10 @@ import { getEnv } from "../../../utils/env.js";
 import HttpError from "../../../utils/errors/http-error.js";
 import type { ILoggerService } from "../../../utils/services/logger/types.js";
 import type { IOllamaService } from "../../../utils/services/ollama/types.js";
+import type { IQdrantService } from "../../../utils/services/qdrant/types.js";
 import { Left, Right } from "../../../utils/types.js";
 import type { Either } from "../../../utils/types.js";
+import { buildPoints } from "../build-qdrant-points.js";
 import { chunkMarkdown } from "../chunk-markdown.js";
 import { extractText } from "../extract-text.js";
 import { splitFrontmatter } from "../split-frontmatter.js";
@@ -12,6 +14,7 @@ import type { IndexRequest, IndexResult } from "../models/types.js";
 export default class IndexContentUsecase {
   constructor(
     private readonly ollamaService: IOllamaService,
+    private readonly qdrantService: IQdrantService,
     private readonly logger: ILoggerService
   ) {}
 
@@ -70,12 +73,95 @@ export default class IndexContentUsecase {
       );
     }
 
+    const expectedDimension = getEnv().QDRANT_DIMENSION;
+    for (const vector of embeddings.success) {
+      if (vector.length !== expectedDimension) {
+        this.logger.error("index-content: embedding dimension mismatch", {
+          source: req.source,
+          expected: expectedDimension,
+          got: vector.length,
+        });
+        return new Left(
+          new HttpError({
+            message: `embedding dimension mismatch (expected ${expectedDimension}, got ${vector.length})`,
+            statusCode: 422,
+          })
+        );
+      }
+    }
+
+    const indexedAt = new Date().toISOString();
+    const points = buildPoints({
+      source: req.source,
+      type: req.type,
+      chunks: chunks.map((chunk) => ({
+        content: chunk.content,
+        headings: chunk.headings,
+      })),
+      embeddings: embeddings.success,
+      frontmatter,
+      indexedAt,
+    });
+
+    const ensured = await this.qdrantService.ensureCollection();
+    if (ensured.isError) {
+      this.logger.error("index-content: failed to ensure Qdrant collection", {
+        source: req.source,
+        error: ensured.error,
+      });
+      return new Left(
+        new HttpError({
+          message: "failed to ensure Qdrant collection",
+          statusCode: 502,
+          meta: ensured.error,
+        })
+      );
+    }
+
+    const deleted = await this.qdrantService.deletePointsByFilter({
+      must: [{ key: "source", match: { value: req.source } }],
+    });
+    if (deleted.isError) {
+      this.logger.error("index-content: failed to delete existing points", {
+        source: req.source,
+        error: deleted.error,
+      });
+      return new Left(
+        new HttpError({
+          message: "failed to delete existing points for source",
+          statusCode: 502,
+          meta: deleted.error,
+        })
+      );
+    }
+
+    const upserted = await this.qdrantService.upsertPoints(points);
+    if (upserted.isError) {
+      this.logger.error("index-content: failed to upsert points", {
+        source: req.source,
+        error: upserted.error,
+      });
+      return new Left(
+        new HttpError({
+          message: "failed to upsert points",
+          statusCode: 502,
+          meta: upserted.error,
+        })
+      );
+    }
+
+    this.logger.info("index-content: content indexed", {
+      source: req.source,
+      chunkCount: chunks.length,
+      upserted: points.length,
+    });
+
     const result: IndexResult = {
       source: req.source,
       type: req.type,
       model: getEnv().OLLAMA_EMBEDDING_MODEL,
       chunkCount: chunks.length,
-      upserted: 0,
+      upserted: points.length,
     };
 
     return new Right(result);
