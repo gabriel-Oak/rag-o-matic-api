@@ -1,4 +1,5 @@
 import { QdrantClient } from "@qdrant/js-client-rest";
+import type { Schemas } from "@qdrant/js-client-rest";
 import { getEnv } from "../../env.js";
 import type { Either } from "../../types.js";
 import { Left, Right } from "../../types.js";
@@ -112,6 +113,26 @@ export default class QdrantService implements IQdrantService {
       return new Right(hits);
     } catch (e) {
       const error = new QdrantError("Failed to query points from Qdrant", {
+        collection: QDRANT_COLLECTION,
+        error: e,
+      });
+      this.logger.error(error.message, error);
+      return new Left(error);
+    }
+  }
+
+  async deletePointsByFilter(
+    filter: Record<string, unknown>
+  ): Promise<Either<QdrantError, void>> {
+    const { QDRANT_COLLECTION } = getEnv();
+
+    try {
+      await this.client.delete(QDRANT_COLLECTION, {
+        filter: filter as Schemas["Filter"],
+      });
+      return new Right(undefined);
+    } catch (e) {
+      const error = new QdrantError("Failed to delete points from Qdrant", {
         collection: QDRANT_COLLECTION,
         error: e,
       });

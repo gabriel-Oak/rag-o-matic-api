@@ -25,5 +25,8 @@ export interface IQdrantService {
     vector: number[],
     limit: number
   ): Promise<Either<QdrantError, QdrantSearchHit[]>>;
+  deletePointsByFilter(
+    filter: Record<string, unknown>
+  ): Promise<Either<QdrantError, void>>;
   close(): Promise<void>;
 }

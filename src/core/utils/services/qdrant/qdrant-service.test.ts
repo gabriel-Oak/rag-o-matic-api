@@ -31,6 +31,7 @@ interface FakeQdrantClient {
   createCollection: ReturnType<typeof vi.fn>;
   upsert: ReturnType<typeof vi.fn>;
   query: ReturnType<typeof vi.fn>;
+  delete: ReturnType<typeof vi.fn>;
   close?: ReturnType<typeof vi.fn>;
 }
 
@@ -46,6 +47,7 @@ function makeFakeClient(
     createCollection: vi.fn().mockResolvedValue(true),
     upsert: vi.fn().mockResolvedValue({ result: {} }),
     query: vi.fn().mockResolvedValue({ points: [] }),
+    delete: vi.fn().mockResolvedValue({ result: {} }),
     close: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -283,6 +285,39 @@ describe("QdrantService.queryPoints", () => {
     if (!result.isError) throw result.success;
     expect(result.error).toBeInstanceOf(QdrantError);
     expect(result.error.type).toBe("qdrant-error");
+    expect(logger.error).toHaveBeenCalled();
+  });
+});
+
+describe("QdrantService.deletePointsByFilter", () => {
+  it("delegates the filter to the client and returns Right", async () => {
+    vi.mocked(getEnv).mockReturnValue(env);
+    const { service, client } = makeService(makeFakeClient());
+    const filter = { must: [{ key: "status", match: { value: "active" } }] };
+
+    const result = await service.deletePointsByFilter(filter);
+
+    expect(result.isError).toBe(false);
+    if (result.isError) throw result.error;
+    expect(result.success).toBeUndefined();
+    expect(client.delete).toHaveBeenCalledWith("vault_notes", { filter });
+  });
+
+  it("returns Left(QdrantError) and logs when the client rejects", async () => {
+    vi.mocked(getEnv).mockReturnValue(env);
+    const { service, client, logger } = makeService(
+      makeFakeClient({
+        delete: vi.fn().mockRejectedValue(new Error("boom")),
+      })
+    );
+
+    const result = await service.deletePointsByFilter({ must: [] });
+
+    expect(result.isError).toBe(true);
+    if (!result.isError) throw result.success;
+    expect(result.error).toBeInstanceOf(QdrantError);
+    expect(result.error.type).toBe("qdrant-error");
+    expect(client.delete).toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalled();
   });
 });
