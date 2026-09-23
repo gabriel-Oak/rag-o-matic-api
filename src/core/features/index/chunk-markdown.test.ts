@@ -91,6 +91,23 @@ describe("chunkMarkdown", () => {
     }
   });
 
+  it("keeps final content <= maxChunkChars for a long section under a heading trail", () => {
+    const body = ["# Doc", "## Section", "x".repeat(500)].join("\n\n");
+    const max = 300;
+    const overlap = 50;
+    const chunks = chunkMarkdown(body, {
+      maxChunkChars: max,
+      overlapChars: overlap,
+    });
+
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(chunk.content.length).toBeLessThanOrEqual(max);
+      expect(chunk.headings).toEqual(["# Doc", "## Section"]);
+      expect(chunk.content).toContain("# Doc\n\n## Section");
+    }
+  });
+
   it("returns an empty array for an empty body", () => {
     expect(chunkMarkdown("")).toEqual([]);
   });

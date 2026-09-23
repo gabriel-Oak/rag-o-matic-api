@@ -136,9 +136,10 @@ function packSection(text: string, max: number, overlap: number): string[] {
 /**
  * Splits a markdown body into embeddable chunks. Each chunk carries the
  * heading trail active at its section (as `headings`, and prefixed to
- * `content` for embedding context) plus a piece of the section text sized
- * to `maxChunkChars`, with `overlapChars` of tail overlap between
- * consecutive pieces of the same section.
+ * `content` for embedding context) plus a piece of the section text, with
+ * `overlapChars` of tail overlap between consecutive pieces of the same
+ * section. The final `content` (heading prefix + piece) never exceeds
+ * `maxChunkChars`: pieces are packed against the budget left by the prefix.
  *
  * Empty / whitespace-only bodies return `[]`.
  */
@@ -158,16 +159,20 @@ export function chunkMarkdown(
 
   for (const section of collectSections(normalized)) {
     const prefix = section.trail.length > 0 ? section.trail.join("\n\n") : "";
-    const full = prefix !== "" ? prefix + "\n\n" + section.text : section.text;
+    const separator = prefix !== "" ? "\n\n" : "";
+    // Budget left for the section text so prefix + piece stays <= max
+    // (clamped to 1 when the trail alone is >= max, degenerate case).
+    const pieceMax = Math.max(1, max - prefix.length - separator.length);
+    const full = prefix !== "" ? prefix + separator + section.text : section.text;
 
     if (full.length <= max) {
       chunks.push({ content: full, headings: section.trail });
       continue;
     }
 
-    for (const piece of packSection(section.text, max, overlap)) {
+    for (const piece of packSection(section.text, pieceMax, overlap)) {
       chunks.push({
-        content: prefix !== "" ? prefix + "\n\n" + piece : piece,
+        content: prefix !== "" ? prefix + separator + piece : piece,
         headings: section.trail,
       });
     }
