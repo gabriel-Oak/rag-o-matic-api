@@ -6,8 +6,15 @@ import { buildPoints, pointId } from "./build-qdrant-points.js";
 const INDEXED_AT = "2026-09-22T12:00:00.000Z";
 
 describe("pointId", () => {
-  it("returns the sha256 hex of `${source}#${chunkIndex}`", () => {
-    const expected = createHash("sha256").update("nota.md#0").digest("hex");
+  it("returns the first 16 bytes of sha256 of `${source}#${chunkIndex}` as a UUID", () => {
+    const hash = createHash("sha256").update("nota.md#0").digest("hex");
+    const expected = [
+      hash.slice(0, 8),
+      hash.slice(8, 12),
+      hash.slice(12, 16),
+      hash.slice(16, 20),
+      hash.slice(20, 32),
+    ].join("-");
     expect(pointId("nota.md", 0)).toBe(expected);
   });
 
@@ -23,8 +30,10 @@ describe("pointId", () => {
     expect(pointId("nota.md", 0)).not.toBe(pointId("nota.md", 1));
   });
 
-  it("returns 64 lowercase hex chars", () => {
-    expect(pointId("nota.md", 0)).toMatch(/^[0-9a-f]{64}$/);
+  it("matches the UUID format 8-4-4-4-12 (lowercase hex)", () => {
+    expect(pointId("nota.md", 0)).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
   });
 });
 

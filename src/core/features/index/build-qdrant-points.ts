@@ -3,14 +3,25 @@ import { createHash } from "node:crypto";
 import type { QdrantPoint } from "../../utils/services/qdrant/types.js";
 
 /**
- * Deterministic Qdrant point ID: `sha256(`${source}#${chunkIndex}`)` in hex
- * (64 chars). Same source + chunk index always maps to the same ID, so
- * re-indexing a note overwrites the same points.
+ * Deterministic Qdrant point ID: first 16 bytes of
+ * `sha256(`${source}#${chunkIndex}`)` formatted as a UUID (8-4-4-4-12).
+ * Qdrant only accepts point IDs as an unsigned integer or a UUID, so the
+ * raw 64-char hex (no dashes) is rejected. Using the first 16 bytes of the
+ * sha256 keeps the ID deterministic (same source + chunk index always maps
+ * to the same ID, so re-indexing a note overwrites the same points) without
+ * adding a dependency.
  */
 export function pointId(source: string, chunkIndex: number): string {
-  return createHash("sha256")
+  const hash = createHash("sha256")
     .update(`${source}#${chunkIndex}`)
     .digest("hex");
+  return [
+    hash.slice(0, 8),
+    hash.slice(8, 12),
+    hash.slice(12, 16),
+    hash.slice(16, 20),
+    hash.slice(20, 32),
+  ].join("-");
 }
 
 export interface BuildPointsArgs {
