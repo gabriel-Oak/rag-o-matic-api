@@ -3,9 +3,8 @@ import cors from '@fastify/cors';
 import { mountMcp } from '../core/mcp/mcp-transport.js';
 import createRouter from './routes.js';
 
-const app = fastify();
+const app = fastify({ bodyLimit: 10 * 1024 * 1024 });
 void app.register(cors);
-// services will be wired here (later task)
 createRouter(app);
 mountMcp(app);
 
