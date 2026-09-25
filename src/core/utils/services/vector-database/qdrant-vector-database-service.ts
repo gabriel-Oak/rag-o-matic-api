@@ -4,14 +4,20 @@ import { getEnv } from "../../env.js";
 import type { Either } from "../../types.js";
 import { Left, Right } from "../../types.js";
 import type { ILoggerService } from "../logger/types.js";
-import type { IQdrantService, QdrantPoint, QdrantSearchHit } from "./types.js";
-import { QdrantError } from "./types.js";
+import type {
+  IVectorDatabaseService,
+  VectorPoint,
+  VectorSearchHit,
+} from "./types.js";
+import { VectorDatabaseError } from "./types.js";
 
 type QdrantClientWithClose = QdrantClient & {
   close?: () => Promise<void>;
 };
 
-export default class QdrantService implements IQdrantService {
+export default class QdrantVectorDatabaseService
+  implements IVectorDatabaseService
+{
   private client?: QdrantClient;
 
   constructor(
@@ -34,7 +40,7 @@ export default class QdrantService implements IQdrantService {
     return this.client;
   }
 
-  async ensureCollection(): Promise<Either<QdrantError, void>> {
+  async ensureCollection(): Promise<Either<VectorDatabaseError, void>> {
     const { QDRANT_COLLECTION, QDRANT_DIMENSION } = getEnv();
 
     try {
@@ -42,7 +48,9 @@ export default class QdrantService implements IQdrantService {
       return new Right(undefined);
     } catch (e) {
       if (!this.isCollectionNotFound(e)) {
-        const error = new QdrantError("Failed to get Qdrant collection", {
+        const error = new VectorDatabaseError(
+          "Failed to get Qdrant collection",
+          {
           collection: QDRANT_COLLECTION,
           error: e,
         });
@@ -56,7 +64,9 @@ export default class QdrantService implements IQdrantService {
         });
         return new Right(undefined);
       } catch (createError) {
-        const error = new QdrantError("Failed to create Qdrant collection", {
+        const error = new VectorDatabaseError(
+          "Failed to create Qdrant collection",
+          {
           collection: QDRANT_COLLECTION,
           error: createError,
         });
@@ -67,8 +77,8 @@ export default class QdrantService implements IQdrantService {
   }
 
   async upsertPoints(
-    points: QdrantPoint[]
-  ): Promise<Either<QdrantError, void>> {
+    points: VectorPoint[]
+  ): Promise<Either<VectorDatabaseError, void>> {
     const { QDRANT_COLLECTION } = getEnv();
 
     try {
@@ -81,7 +91,7 @@ export default class QdrantService implements IQdrantService {
       });
       return new Right(undefined);
     } catch (e) {
-      const error = new QdrantError("Failed to upsert points to Qdrant", {
+      const error = new VectorDatabaseError("Failed to upsert points to Qdrant", {
         collection: QDRANT_COLLECTION,
         error: e,
       });
@@ -93,7 +103,7 @@ export default class QdrantService implements IQdrantService {
   async queryPoints(
     vector: number[],
     limit: number
-  ): Promise<Either<QdrantError, QdrantSearchHit[]>> {
+  ): Promise<Either<VectorDatabaseError, VectorSearchHit[]>> {
     const { QDRANT_COLLECTION } = getEnv();
 
     try {
@@ -103,7 +113,7 @@ export default class QdrantService implements IQdrantService {
         with_payload: true,
       });
 
-      const hits: QdrantSearchHit[] = (response.points ?? []).map(
+      const hits: VectorSearchHit[] = (response.points ?? []).map(
         (entry) => ({
           score: entry.score,
           point: {
@@ -116,7 +126,9 @@ export default class QdrantService implements IQdrantService {
 
       return new Right(hits);
     } catch (e) {
-      const error = new QdrantError("Failed to query points from Qdrant", {
+      const error = new VectorDatabaseError(
+        "Failed to query points from Qdrant",
+        {
         collection: QDRANT_COLLECTION,
         error: e,
       });
@@ -127,7 +139,7 @@ export default class QdrantService implements IQdrantService {
 
   async deletePointsByFilter(
     filter: Record<string, unknown>
-  ): Promise<Either<QdrantError, void>> {
+  ): Promise<Either<VectorDatabaseError, void>> {
     const { QDRANT_COLLECTION } = getEnv();
 
     try {
@@ -136,7 +148,9 @@ export default class QdrantService implements IQdrantService {
       });
       return new Right(undefined);
     } catch (e) {
-      const error = new QdrantError("Failed to delete points from Qdrant", {
+      const error = new VectorDatabaseError(
+        "Failed to delete points from Qdrant",
+        {
         collection: QDRANT_COLLECTION,
         error: e,
       });

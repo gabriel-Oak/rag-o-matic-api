@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { QdrantPoint } from "../../utils/services/qdrant/types.js";
+import type { VectorPoint } from "../../utils/services/vector-database/types.js";
 
 /**
  * Deterministic Qdrant point ID: first 16 bytes of
@@ -39,7 +39,7 @@ export interface BuildPointsArgs {
  * function stays pure. The `frontmatter` payload key is only present when
  * `args.frontmatter` is defined.
  */
-export function buildPoints(args: BuildPointsArgs): QdrantPoint[] {
+export function buildPoints(args: BuildPointsArgs): VectorPoint[] {
   const { source, type, chunks, embeddings, frontmatter, indexedAt } = args;
 
   return chunks.map((chunk, i) => ({

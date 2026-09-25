@@ -4,10 +4,10 @@ import { getEnv } from "../../../utils/env.js";
 import { AIError, type IAIService } from "../../../utils/services/ai/types.js";
 import type { ILoggerService } from "../../../utils/services/logger/types.js";
 import type {
-  IQdrantService,
-  QdrantPoint,
-} from "../../../utils/services/qdrant/types.js";
-import { QdrantError } from "../../../utils/services/qdrant/types.js";
+  IVectorDatabaseService,
+  VectorPoint,
+} from "../../../utils/services/vector-database/types.js";
+import { VectorDatabaseError } from "../../../utils/services/vector-database/types.js";
 import { Left, Right } from "../../../utils/types.js";
 import { pointId } from "../build-qdrant-points.js";
 import type { IndexRequest } from "../models/types.js";
@@ -38,18 +38,18 @@ function fakeLogger(): ILoggerService {
 
 type QdrantOverrides = Partial<
   Pick<
-    IQdrantService,
+    IVectorDatabaseService,
     "ensureCollection" | "deletePointsByFilter" | "upsertPoints"
   >
 >;
 
 function makeQdrant(overrides: QdrantOverrides = {}) {
-  const upsertedBatches: QdrantPoint[][] = [];
+  const upsertedBatches: VectorPoint[][] = [];
   const deleteFilters: Record<string, unknown>[] = [];
 
-  const service: IQdrantService = {
+  const service: IVectorDatabaseService = {
     ensureCollection: vi.fn(async () => new Right(undefined)),
-    upsertPoints: vi.fn(async (points: QdrantPoint[]) => {
+    upsertPoints: vi.fn(async (points: VectorPoint[]) => {
       upsertedBatches.push(points);
       return new Right(undefined);
     }),
@@ -243,7 +243,7 @@ describe("IndexContentUsecase.execute", () => {
     const markdown = "# Title\n\nText here.";
     const embed = vi.fn().mockResolvedValue(new Right([vector1024(0)]));
     const { usecase, logger, qdrant } = makeUsecase(embed, {
-      ensureCollection: vi.fn(async () => new Left(new QdrantError("boom"))),
+      ensureCollection: vi.fn(async () => new Left(new VectorDatabaseError("boom"))),
     });
 
     const result = await usecase.execute(markdownRequest(markdown));
@@ -252,7 +252,7 @@ describe("IndexContentUsecase.execute", () => {
     if (!result.isError) throw result.success;
     expect(result.error.statusCode).toBe(502);
     expect(result.error.message).toBe("failed to ensure Qdrant collection");
-    expect(result.error.meta).toBeInstanceOf(QdrantError);
+    expect(result.error.meta).toBeInstanceOf(VectorDatabaseError);
     expect(logger.error).toHaveBeenCalled();
     expect(qdrant.upsertedBatches).toHaveLength(0);
   });
@@ -262,7 +262,7 @@ describe("IndexContentUsecase.execute", () => {
     const embed = vi.fn().mockResolvedValue(new Right([vector1024(0)]));
     const { usecase, logger, qdrant } = makeUsecase(embed, {
       deletePointsByFilter: vi.fn(
-        async () => new Left(new QdrantError("boom")),
+        async () => new Left(new VectorDatabaseError("boom")),
       ),
     });
 
@@ -274,7 +274,7 @@ describe("IndexContentUsecase.execute", () => {
     expect(result.error.message).toBe(
       "failed to delete existing points for source",
     );
-    expect(result.error.meta).toBeInstanceOf(QdrantError);
+    expect(result.error.meta).toBeInstanceOf(VectorDatabaseError);
     expect(logger.error).toHaveBeenCalled();
     expect(qdrant.upsertedBatches).toHaveLength(0);
   });
@@ -283,7 +283,7 @@ describe("IndexContentUsecase.execute", () => {
     const markdown = "# Title\n\nText here.";
     const embed = vi.fn().mockResolvedValue(new Right([vector1024(0)]));
     const { usecase, logger, qdrant } = makeUsecase(embed, {
-      upsertPoints: vi.fn(async () => new Left(new QdrantError("boom"))),
+      upsertPoints: vi.fn(async () => new Left(new VectorDatabaseError("boom"))),
     });
 
     const result = await usecase.execute(markdownRequest(markdown));
@@ -292,7 +292,7 @@ describe("IndexContentUsecase.execute", () => {
     if (!result.isError) throw result.success;
     expect(result.error.statusCode).toBe(502);
     expect(result.error.message).toBe("failed to upsert points");
-    expect(result.error.meta).toBeInstanceOf(QdrantError);
+    expect(result.error.meta).toBeInstanceOf(VectorDatabaseError);
     expect(logger.error).toHaveBeenCalled();
     expect(qdrant.upsertedBatches).toHaveLength(0);
   });

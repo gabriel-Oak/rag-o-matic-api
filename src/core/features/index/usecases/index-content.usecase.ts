@@ -2,7 +2,7 @@ import { getEnv } from "../../../utils/env.js";
 import HttpError from "../../../utils/errors/http-error.js";
 import type { ILoggerService } from "../../../utils/services/logger/types.js";
 import type { IAIService } from "../../../utils/services/ai/types.js";
-import type { IQdrantService } from "../../../utils/services/qdrant/types.js";
+import type { IVectorDatabaseService } from "../../../utils/services/vector-database/types.js";
 import { Left, Right } from "../../../utils/types.js";
 import type { Either } from "../../../utils/types.js";
 import { buildPoints } from "../build-qdrant-points.js";
@@ -14,7 +14,7 @@ import type { IndexRequest, IndexResult } from "../models/types.js";
 export default class IndexContentUsecase {
   constructor(
     private readonly aiService: IAIService,
-    private readonly qdrantService: IQdrantService,
+    private readonly qdrantService: IVectorDatabaseService,
     private readonly logger: ILoggerService
   ) {}
 

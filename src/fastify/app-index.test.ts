@@ -31,11 +31,11 @@ vi.mock('../core/utils/services/ai/ollama-ai-service.js', async () => {
   return { default: MockAiService };
 });
 
-vi.mock('../core/utils/services/qdrant/index.js', async () => {
+vi.mock('../core/utils/services/vector-database/index.js', async () => {
   const { Right } = await import('../core/utils/types.js');
 
   return {
-    createQdrantService: () => ({
+    createVectorDatabaseService: () => ({
       ensureCollection: async () => new Right(undefined),
       upsertPoints: async () => new Right(undefined),
       queryPoints: async () => new Right([]),

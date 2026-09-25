@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../../env.js";
 import { getEnv } from "../../env.js";
 import type { ILoggerService } from "../logger/types.js";
-import QdrantService from "./qdrant-service.js";
-import { QdrantError } from "./types.js";
+import QdrantVectorDatabaseService from "./qdrant-vector-database-service.js";
+import { VectorDatabaseError } from "./types.js";
 
 vi.mock("../../env.js", () => ({
   getEnv: vi.fn(),
@@ -64,7 +64,7 @@ function fakeLogger(): ILoggerService {
 
 function makeService(client: FakeQdrantClient) {
   const logger = fakeLogger();
-  const service = new QdrantService(
+  const service = new QdrantVectorDatabaseService(
     logger,
     client as unknown as QdrantClient
   );
@@ -72,11 +72,11 @@ function makeService(client: FakeQdrantClient) {
   return { service, client, logger };
 }
 
-describe("QdrantService constructor", () => {
+describe("QdrantVectorDatabaseService constructor", () => {
   it("does not create the client or read env until first use", () => {
     vi.mocked(getEnv).mockReturnValue(env);
 
-    new QdrantService(fakeLogger());
+    new QdrantVectorDatabaseService(fakeLogger());
 
     expect(QdrantClient).not.toHaveBeenCalled();
     expect(getEnv).not.toHaveBeenCalled();
@@ -84,7 +84,7 @@ describe("QdrantService constructor", () => {
 
   it("builds the client from the env url on first use", async () => {
     vi.mocked(getEnv).mockReturnValue(env);
-    const service = new QdrantService(fakeLogger());
+    const service = new QdrantVectorDatabaseService(fakeLogger());
 
     await service.ensureCollection();
 
@@ -97,7 +97,7 @@ describe("QdrantService constructor", () => {
       ...env,
       QDRANT_API_KEY: "secret-key",
     });
-    const service = new QdrantService(fakeLogger());
+    const service = new QdrantVectorDatabaseService(fakeLogger());
     await service.ensureCollection();
     expect(QdrantClient).toHaveBeenCalledWith({
       url: QDRANT_URL,
@@ -106,7 +106,7 @@ describe("QdrantService constructor", () => {
 
     vi.mocked(QdrantClient).mockClear();
     vi.mocked(getEnv).mockReturnValue(env);
-    const other = new QdrantService(fakeLogger());
+    const other = new QdrantVectorDatabaseService(fakeLogger());
     await other.ensureCollection();
     expect(QdrantClient).toHaveBeenCalledWith({ url: QDRANT_URL });
   });
@@ -114,17 +114,17 @@ describe("QdrantService constructor", () => {
   it("uses the injected client when provided", () => {
     vi.mocked(getEnv).mockReturnValue(env);
     const client = makeFakeClient();
-    const service = new QdrantService(
+    const service = new QdrantVectorDatabaseService(
       fakeLogger(),
       client as unknown as QdrantClient
     );
 
     expect(QdrantClient).not.toHaveBeenCalled();
-    expect(service).toBeInstanceOf(QdrantService);
+    expect(service).toBeInstanceOf(QdrantVectorDatabaseService);
   });
 });
 
-describe("QdrantService.ensureCollection", () => {
+describe("QdrantVectorDatabaseService.ensureCollection", () => {
   it("returns Right when the collection already exists", async () => {
     vi.mocked(getEnv).mockReturnValue(env);
     const { service, client } = makeService(makeFakeClient());
@@ -158,7 +158,7 @@ describe("QdrantService.ensureCollection", () => {
     });
   });
 
-  it("returns Left(QdrantError) and logs when getCollection fails with another error", async () => {
+  it("returns Left(VectorDatabaseError) and logs when getCollection fails with another error", async () => {
     vi.mocked(getEnv).mockReturnValue(env);
     const { service, client, logger } = makeService(
       makeFakeClient({
@@ -172,13 +172,13 @@ describe("QdrantService.ensureCollection", () => {
 
     expect(result.isError).toBe(true);
     if (!result.isError) throw result.success;
-    expect(result.error).toBeInstanceOf(QdrantError);
-    expect(result.error.type).toBe("qdrant-error");
+    expect(result.error).toBeInstanceOf(VectorDatabaseError);
+    expect(result.error.type).toBe("vector-database-error");
     expect(client.createCollection).not.toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalled();
   });
 
-  it("returns Left(QdrantError) and logs when createCollection fails", async () => {
+  it("returns Left(VectorDatabaseError) and logs when createCollection fails", async () => {
     vi.mocked(getEnv).mockReturnValue(env);
     const { service, client, logger } = makeService(
       makeFakeClient({
@@ -195,7 +195,7 @@ describe("QdrantService.ensureCollection", () => {
 
     expect(result.isError).toBe(true);
     if (!result.isError) throw result.success;
-    expect(result.error).toBeInstanceOf(QdrantError);
+    expect(result.error).toBeInstanceOf(VectorDatabaseError);
     expect(client.createCollection).toHaveBeenCalledWith("vault_notes", {
       vectors: { size: 1024, distance: "Cosine" },
     });
@@ -203,7 +203,7 @@ describe("QdrantService.ensureCollection", () => {
   });
 });
 
-describe("QdrantService.upsertPoints", () => {
+describe("QdrantVectorDatabaseService.upsertPoints", () => {
   it("delegates the mapped points to the client and returns Right", async () => {
     vi.mocked(getEnv).mockReturnValue(env);
     const { service, client } = makeService(makeFakeClient());
@@ -225,7 +225,7 @@ describe("QdrantService.upsertPoints", () => {
     });
   });
 
-  it("returns Left(QdrantError) and logs when the client rejects", async () => {
+  it("returns Left(VectorDatabaseError) and logs when the client rejects", async () => {
     vi.mocked(getEnv).mockReturnValue(env);
     const { service, client, logger } = makeService(
       makeFakeClient({
@@ -239,14 +239,14 @@ describe("QdrantService.upsertPoints", () => {
 
     expect(result.isError).toBe(true);
     if (!result.isError) throw result.success;
-    expect(result.error).toBeInstanceOf(QdrantError);
-    expect(result.error.type).toBe("qdrant-error");
+    expect(result.error).toBeInstanceOf(VectorDatabaseError);
+    expect(result.error.type).toBe("vector-database-error");
     expect(client.upsert).toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalled();
   });
 });
 
-describe("QdrantService.queryPoints", () => {
+describe("QdrantVectorDatabaseService.queryPoints", () => {
   it("maps the response entries to search hits and returns Right", async () => {
     vi.mocked(getEnv).mockReturnValue(env);
     const vector = [0.1, 0.2];
@@ -284,7 +284,7 @@ describe("QdrantService.queryPoints", () => {
     });
   });
 
-  it("returns Left(QdrantError) and logs when the client rejects", async () => {
+  it("returns Left(VectorDatabaseError) and logs when the client rejects", async () => {
     vi.mocked(getEnv).mockReturnValue(env);
     const { service, logger } = makeService(
       makeFakeClient({
@@ -296,13 +296,13 @@ describe("QdrantService.queryPoints", () => {
 
     expect(result.isError).toBe(true);
     if (!result.isError) throw result.success;
-    expect(result.error).toBeInstanceOf(QdrantError);
-    expect(result.error.type).toBe("qdrant-error");
+    expect(result.error).toBeInstanceOf(VectorDatabaseError);
+    expect(result.error.type).toBe("vector-database-error");
     expect(logger.error).toHaveBeenCalled();
   });
 });
 
-describe("QdrantService.deletePointsByFilter", () => {
+describe("QdrantVectorDatabaseService.deletePointsByFilter", () => {
   it("delegates the filter to the client and returns Right", async () => {
     vi.mocked(getEnv).mockReturnValue(env);
     const { service, client } = makeService(makeFakeClient());
@@ -316,7 +316,7 @@ describe("QdrantService.deletePointsByFilter", () => {
     expect(client.delete).toHaveBeenCalledWith("vault_notes", { filter });
   });
 
-  it("returns Left(QdrantError) and logs when the client rejects", async () => {
+  it("returns Left(VectorDatabaseError) and logs when the client rejects", async () => {
     vi.mocked(getEnv).mockReturnValue(env);
     const { service, client, logger } = makeService(
       makeFakeClient({
@@ -328,14 +328,14 @@ describe("QdrantService.deletePointsByFilter", () => {
 
     expect(result.isError).toBe(true);
     if (!result.isError) throw result.success;
-    expect(result.error).toBeInstanceOf(QdrantError);
-    expect(result.error.type).toBe("qdrant-error");
+    expect(result.error).toBeInstanceOf(VectorDatabaseError);
+    expect(result.error.type).toBe("vector-database-error");
     expect(client.delete).toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalled();
   });
 });
 
-describe("QdrantService.close", () => {
+describe("QdrantVectorDatabaseService.close", () => {
   it("delegates to client.close when available", async () => {
     const { service, client } = makeService(makeFakeClient());
 
@@ -354,7 +354,7 @@ describe("QdrantService.close", () => {
 
   it("is a no-op when no client was ever created", async () => {
     vi.mocked(getEnv).mockReturnValue(env);
-    const service = new QdrantService(fakeLogger());
+    const service = new QdrantVectorDatabaseService(fakeLogger());
 
     await expect(service.close()).resolves.toBeUndefined();
     expect(QdrantClient).not.toHaveBeenCalled();
