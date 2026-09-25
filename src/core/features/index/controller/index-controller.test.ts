@@ -7,7 +7,7 @@ import HttpError from "../../../utils/errors/http-error.js";
 import { Left, Right } from "../../../utils/types.js";
 import type { Either } from "../../../utils/types.js";
 import type { IndexResult } from "../models/types.js";
-import type IndexContentUsecase from "../usecases/index-content.usecase.js";
+import type IndexContentUsecase from "../usecases/index-content-usecase.js";
 import IndexController from "./index-controller.js";
 
 const mockError = vi.fn();

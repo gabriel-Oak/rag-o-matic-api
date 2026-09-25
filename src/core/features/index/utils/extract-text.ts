@@ -1,12 +1,10 @@
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import createLoggerService from '../../../utils/services/logger/index.js';
+import type { ILoggerService } from '../../../utils/services/logger/types.js';
 import { Left, Right } from '../../../utils/types.js';
 import type { Either } from '../../../utils/types.js';
 import { ExtractError } from '../models/types.js';
 
 const BOM = '\uFEFF';
-
-const logger = createLoggerService();
 
 /**
  * Extracts plain text from the given bytes.
@@ -20,14 +18,15 @@ const logger = createLoggerService();
  */
 export async function extractText(
   type: 'markdown' | 'pdf',
-  bytes: Buffer
+  bytes: Buffer,
+  logger: ILoggerService
 ): Promise<Either<ExtractError, string>> {
   let text: string;
 
   if (type === 'markdown') {
     text = stripBom(bytes.toString('utf8'));
   } else {
-    const result = await extractPdfText(bytes);
+    const result = await extractPdfText(bytes, logger);
     if (result instanceof Left) return result;
     text = result.success;
   }
@@ -44,7 +43,8 @@ function stripBom(value: string): string {
 }
 
 async function extractPdfText(
-  bytes: Buffer
+  bytes: Buffer,
+  logger: ILoggerService
 ): Promise<Either<ExtractError, string>> {
   const task = getDocument({
     data: new Uint8Array(bytes),

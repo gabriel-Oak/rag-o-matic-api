@@ -1,10 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { extractText } from './extract-text.js';
 import { ExtractError } from '../models/types.js';
 import { Left, Right } from '../../../utils/types.js';
+
+const noopLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 
 const fixturesDir = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -15,7 +17,7 @@ const fixturesDir = join(
 describe('extractText', () => {
   it('returns exact text for markdown utf-8', async () => {
     const bytes = Buffer.from('# Title\n\nBody text.', 'utf8');
-    const result = await extractText('markdown', bytes);
+    const result = await extractText('markdown', bytes, noopLogger);
 
     expect(result).toBeInstanceOf(Right);
     if (result.isError) throw new Error('expected success');
@@ -24,7 +26,7 @@ describe('extractText', () => {
 
   it('strips leading BOM from markdown', async () => {
     const bytes = Buffer.from('\uFEFF# Title', 'utf8');
-    const result = await extractText('markdown', bytes);
+    const result = await extractText('markdown', bytes, noopLogger);
 
     expect(result).toBeInstanceOf(Right);
     if (result.isError) throw new Error('expected success');
@@ -33,7 +35,7 @@ describe('extractText', () => {
 
   it('extracts known text from sample.pdf fixture', async () => {
     const bytes = readFileSync(join(fixturesDir, 'sample.pdf'));
-    const result = await extractText('pdf', bytes);
+    const result = await extractText('pdf', bytes, noopLogger);
 
     expect(result).toBeInstanceOf(Right);
     if (result.isError) throw new Error('expected success');
@@ -41,7 +43,7 @@ describe('extractText', () => {
   });
 
   it('returns Left(ExtractError) for garbage bytes as pdf', async () => {
-    const result = await extractText('pdf', Buffer.from('not a pdf'));
+    const result = await extractText('pdf', Buffer.from('not a pdf'), noopLogger);
 
     expect(result).toBeInstanceOf(Left);
     if (!result.isError) throw new Error('expected error');
@@ -50,7 +52,7 @@ describe('extractText', () => {
 
   it('returns Left(ExtractError) when pdf has no extractable text', async () => {
     const bytes = readFileSync(join(fixturesDir, 'sample-blank.pdf'));
-    const result = await extractText('pdf', bytes);
+    const result = await extractText('pdf', bytes, noopLogger);
 
     expect(result).toBeInstanceOf(Left);
     if (!result.isError) throw new Error('expected error');

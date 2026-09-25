@@ -3,7 +3,7 @@ import controller from "../../../utils/controller/decorators/controller.js";
 import post from "../../../utils/controller/decorators/post.js";
 import HttpError from "../../../utils/errors/http-error.js";
 import { indexRequestSchema } from "../models/types.js";
-import type IndexContentUsecase from "../usecases/index-content.usecase.js";
+import type IndexContentUsecase from "../usecases/index-content-usecase.js";
 
 @controller("/index")
 export default class IndexController {
