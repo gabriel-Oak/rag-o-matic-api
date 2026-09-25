@@ -88,6 +88,7 @@ Os defaults do `.env.example` já apontam para `localhost:11434` e
 | ------ | --------- | -------------------------------- |
 | GET    | `/health` | Health check → `{"status":"ok"}` |
 | POST   | `/index`  | Indexa conteúdo (markdown/PDF) — chunks + embeddings persistidos no Qdrant; veja abaixo |
+| GET    | `/query`  | Busca top-k de chunks similares — vetoriza via Ollama, busca no Qdrant; veja abaixo |
 
 #### `POST /index` — indexação de conteúdo
 
@@ -139,7 +140,54 @@ Status codes:
 | `422`  | extração falhou (ex.: PDF corrompido — OCR fora de escopo) OU dimension mismatch: `"embedding dimension mismatch (expected X, got Y)"` |
 | `502`  | Ollama ou Qdrant falharam                                                                  |
 
-**Nota: busca (`POST /query`) ainda não existe** — plano futuro.
+#### `GET /query` — busca de chunks similares
+
+Recebe a query como string no querystring, **vetoriza via Ollama**
+(`bge-m3`) e busca no **Qdrant** os chunks mais similares (top-k),
+retornando trechos + metadata + score. Resultados vazios → **200 com
+`results: []`** (não é erro).
+
+Querystring:
+
+| Param   | Tipo      | Obrigatório | Descrição                       |
+| ------- | --------- | ----------- | ------------------------------- |
+| `q`     | string    | sim         | Texto da busca                  |
+| `limit` | int 1–20  | não         | Default `5`; top-k de resultados |
+
+Response (200):
+
+```json
+{
+  "query": "notas sobre terapia",
+  "count": 3,
+  "results": [
+    {
+      "score": 0.87,
+      "source": "Terapia 2026-05-20.md",
+      "type": "markdown",
+      "chunkIndex": 2,
+      "headings": ["# Terapia 2026-05-20", "## Resumo"],
+      "content": "## Resumo\n\n...",
+      "indexedAt": "2026-09-24T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+- `score` — cosine do Qdrant (`[0,1]`, maior = mais similar)
+- `count` — `results.length`
+- **Sem `model` no response** — config ativa (model/collection/dimension)
+  visível via tool MCP `health`
+- Sem vector/frontmatter no response
+
+Status codes:
+
+| Código | Caso                                                                                       |
+| ------ | ------------------------------------------------------------------------------------------ |
+| `200`  | ok (inclui resultados vazios → `results: []`)                                              |
+| `400`  | `q` ausente/vazio ou `limit` inválido (schema)                                            |
+| `422`  | dimension mismatch do embedding: `"embedding dimension mismatch (expected X, got Y)"`     |
+| `502`  | Ollama ou Qdrant falharam                                                                  |
 
 ### MCP (Streamable HTTP)
 
@@ -212,6 +260,13 @@ curl -s -X POST http://localhost:8080/index \
   }"
 ```
 
+`GET /query` — busca top-k de chunks similares:
+
+```sh
+curl -s 'http://localhost:8080/query?q=notas+sobre+terapia&limit=3'
+# {"query":"notas sobre terapia","count":3,"results":[{"score":0.87,"source":"Terapia 2026-05-20.md","type":"markdown","chunkIndex":2,"headings":["# Terapia 2026-05-20","## Resumo"],"content":"## Resumo\n\n...","indexedAt":"2026-09-24T12:00:00.000Z"}]}
+```
+
 MCP — `initialize` (responde com o header `mcp-session-id`; use-o nas
 próximas chamadas):
 
@@ -260,7 +315,8 @@ npm run build     # tsc → dist/
 
 Base pronta: app Fastify, serviços (Ollama, Qdrant, http, logger),
 servidor MCP com tool `health`, Docker + compose, testes, `POST /index`
-(produção — persiste chunks + embeddings no Qdrant).
+(produção — persiste chunks + embeddings no Qdrant), `GET /query`
+(busca top-k de chunks similares).
 
-Backlog (próximas tasks): `POST /query`, tools MCP de feature
-(index/query). Ver nota do vault: `RAG Obsidian.md`.
+Backlog (próximas tasks): tools MCP de feature (index/query).
+Ver nota do vault: `RAG Obsidian.md`.
