@@ -1,8 +1,8 @@
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import createLoggerService from '../../utils/services/logger/index.js';
-import { Left, Right } from '../../utils/types.js';
-import type { Either } from '../../utils/types.js';
-import { ExtractError } from './models/types.js';
+import createLoggerService from '../../../utils/services/logger/index.js';
+import { Left, Right } from '../../../utils/types.js';
+import type { Either } from '../../../utils/types.js';
+import { ExtractError } from '../models/types.js';
 
 const BOM = '\uFEFF';
 

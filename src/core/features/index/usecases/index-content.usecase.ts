@@ -5,10 +5,10 @@ import type { IAIService } from "../../../utils/services/ai/types.js";
 import type { IVectorDatabaseService } from "../../../utils/services/vector-database/types.js";
 import { Left, Right } from "../../../utils/types.js";
 import type { Either } from "../../../utils/types.js";
-import { buildPoints } from "../build-qdrant-points.js";
-import { chunkMarkdown } from "../chunk-markdown.js";
-import { extractText } from "../extract-text.js";
-import { splitFrontmatter } from "../split-frontmatter.js";
+import { buildPoints } from "../utils/build-vector-points.js";
+import { chunkMarkdown } from "../utils/chunk-markdown.js";
+import { extractText } from "../utils/extract-text.js";
+import { splitFrontmatter } from "../utils/split-frontmatter.js";
 import type { IndexRequest, IndexResult } from "../models/types.js";
 
 export default class IndexContentUsecase {

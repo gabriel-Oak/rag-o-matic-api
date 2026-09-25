@@ -4,7 +4,7 @@ import BaseError from "../../../utils/errors/base-error.js";
 import {
   DEFAULT_MAX_CHUNK_CHARS,
   DEFAULT_OVERLAP_CHARS,
-} from "../chunk-markdown.js";
+} from "../utils/chunk-markdown.js";
 
 export class ExtractError extends BaseError {
   readonly type = "extract-error";

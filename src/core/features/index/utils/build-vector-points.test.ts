@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
-import { buildPoints, pointId } from "./build-qdrant-points.js";
+import { buildPoints, pointId } from "./build-vector-points.js";
 
 const INDEXED_AT = "2026-09-22T12:00:00.000Z";
 

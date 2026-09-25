@@ -9,7 +9,7 @@ import type {
 } from "../../../utils/services/vector-database/types.js";
 import { VectorDatabaseError } from "../../../utils/services/vector-database/types.js";
 import { Left, Right } from "../../../utils/types.js";
-import { pointId } from "../build-qdrant-points.js";
+import { pointId } from "../utils/build-vector-points.js";
 import type { IndexRequest } from "../models/types.js";
 import IndexContentUsecase from "./index-content.usecase.js";
 

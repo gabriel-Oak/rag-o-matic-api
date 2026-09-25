@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { VectorPoint } from "../../utils/services/vector-database/types.js";
+import type { VectorPoint } from "../../../utils/services/vector-database/types.js";
 
 /**
  * Deterministic Qdrant point ID: first 16 bytes of

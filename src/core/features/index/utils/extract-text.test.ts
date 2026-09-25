@@ -3,10 +3,14 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { extractText } from './extract-text.js';
-import { ExtractError } from './models/types.js';
-import { Left, Right } from '../../utils/types.js';
+import { ExtractError } from '../models/types.js';
+import { Left, Right } from '../../../utils/types.js';
 
-const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__');
+const fixturesDir = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '__fixtures__',
+);
 
 describe('extractText', () => {
   it('returns exact text for markdown utf-8', async () => {
