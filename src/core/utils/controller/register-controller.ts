@@ -26,7 +26,7 @@ export default function registerController(
             const res = await (controller as Record<string, controllerAction>)[action](req, rep);
             return res;
           } catch (e) {
-            const error = new HttpError({
+            const error = e instanceof HttpError ? e : new HttpError({
               message: (e as Error).message,
               meta: e
             });

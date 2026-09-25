@@ -6,6 +6,7 @@ import controller from './decorators/controller.js';
 import get from './decorators/get.js';
 import post from './decorators/post.js';
 import { ICreateController } from './types.js';
+import HttpError from '../errors/http-error.js';
 
 const mockError = vi.fn();
 vi.mock('../services/logger/index.js', () => ({
@@ -48,6 +49,33 @@ class BoomController {
   @get('/rejecting')
   rejecting() {
     return Promise.reject(new Error('async boom'));
+  }
+}
+
+@controller('/http-error')
+class HttpErrorController {
+  @get('/sync-422')
+  sync422() {
+    throw new HttpError({ message: 'unprocessable', statusCode: 422 });
+  }
+
+  @get('/rejecting-422')
+  rejecting422() {
+    return Promise.reject(
+      new HttpError({ message: 'unprocessable', statusCode: 422 })
+    );
+  }
+
+  @get('/sync-502')
+  sync502() {
+    throw new HttpError({ message: 'bad gateway', statusCode: 502 });
+  }
+
+  @get('/rejecting-502')
+  rejecting502() {
+    return Promise.reject(
+      new HttpError({ message: 'bad gateway', statusCode: 502 })
+    );
   }
 }
 
@@ -115,6 +143,50 @@ describe('registerController (buildRoutes)', () => {
     expect(body.error).toBe('Internal Server Error');
     expect(body.message).toBe('async boom');
     expect(mockError).toHaveBeenCalledWith('async boom', expect.anything());
+    await app.close();
+  });
+
+  it('handler throwing an HttpError (422) synchronously preserves statusCode', async () => {
+    const app = createApp([() => new HttpErrorController()]);
+    const res = await app.inject({ method: 'GET', url: '/http-error/sync-422' });
+    expect(res.statusCode).toBe(422);
+    const body = res.json();
+    expect(body.statusCode).toBe(422);
+    expect(body.message).toBe('unprocessable');
+    expect(mockError).toHaveBeenCalledWith('unprocessable', expect.anything());
+    await app.close();
+  });
+
+  it('handler rejecting with an HttpError (422) preserves statusCode', async () => {
+    const app = createApp([() => new HttpErrorController()]);
+    const res = await app.inject({ method: 'GET', url: '/http-error/rejecting-422' });
+    expect(res.statusCode).toBe(422);
+    const body = res.json();
+    expect(body.statusCode).toBe(422);
+    expect(body.message).toBe('unprocessable');
+    expect(mockError).toHaveBeenCalledWith('unprocessable', expect.anything());
+    await app.close();
+  });
+
+  it('handler throwing an HttpError (502) synchronously preserves statusCode', async () => {
+    const app = createApp([() => new HttpErrorController()]);
+    const res = await app.inject({ method: 'GET', url: '/http-error/sync-502' });
+    expect(res.statusCode).toBe(502);
+    const body = res.json();
+    expect(body.statusCode).toBe(502);
+    expect(body.message).toBe('bad gateway');
+    expect(mockError).toHaveBeenCalledWith('bad gateway', expect.anything());
+    await app.close();
+  });
+
+  it('handler rejecting with an HttpError (502) preserves statusCode', async () => {
+    const app = createApp([() => new HttpErrorController()]);
+    const res = await app.inject({ method: 'GET', url: '/http-error/rejecting-502' });
+    expect(res.statusCode).toBe(502);
+    const body = res.json();
+    expect(body.statusCode).toBe(502);
+    expect(body.message).toBe('bad gateway');
+    expect(mockError).toHaveBeenCalledWith('bad gateway', expect.anything());
     await app.close();
   });
 });

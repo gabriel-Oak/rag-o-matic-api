@@ -24,7 +24,7 @@ src/
 │       ├── services/   # ollama (embeddings), qdrant (vetores), http, logger
 │       ├── controller/ # decorators (@Controller, @Get, @Post...) + build-routes
 │       └── errors/     # HttpError / BaseError
-└── core/features/  # (futuro) indexação e query de notas
+└── core/features/  # indexação e query de notas
 ```
 
 Padrão **drink-it**: controllers via decorators + use cases + resultados
@@ -87,6 +87,59 @@ Os defaults do `.env.example` já apontam para `localhost:11434` e
 | Método | Rota      | Descrição                        |
 | ------ | --------- | -------------------------------- |
 | GET    | `/health` | Health check → `{"status":"ok"}` |
+| POST   | `/index`  | Indexa conteúdo (markdown/PDF) — chunks + embeddings persistidos no Qdrant; veja abaixo |
+
+#### `POST /index` — indexação de conteúdo
+
+Agnóstico de formato: recebe **markdown ou PDF** (bytes originais em
+**base64** no body JSON), extrai o texto, faz chunking markdown-aware,
+gera embeddings via Ollama e **persiste os pontos no Qdrant**
+(collection `vault_notes`, 1024 dimensões, distância Cosine). O response
+é um **resumo** da operação.
+
+**`source` é obrigatório**: identidade do documento no índice. Re-index do
+mesmo `source` sobrescreve os pontos existentes (delete-then-upsert).
+
+Body (JSON):
+
+| Campo                    | Tipo                 | Obrigatório | Descrição                                            |
+| ------------------------ | -------------------- | ----------- | ---------------------------------------------------- |
+| `type`                   | `"markdown" \| "pdf"` | sim         | Formato do conteúdo (explícito, não inferido)        |
+| `content`                | string (base64)      | sim         | `base64 < nota.md>` ou `base64 < doc.pdf>`           |
+| `source`                 | string               | sim         | Identidade do documento no índice (re-index sobrescreve) |
+| `chunking.maxChunkChars` | int > 0              | não         | Default `1500`                                       |
+| `chunking.overlapChars`  | int > 0              | não         | Default `200`; deve ser `< maxChunkChars`            |
+
+Body limitado a 10 MB (base64 infla o payload ~33%).
+
+Response (200):
+
+```json
+{
+  "source": "nota.md",
+  "type": "markdown",
+  "model": "bge-m3",
+  "chunkCount": 5,
+  "upserted": 5
+}
+```
+
+- `source` — echo do `source` enviado no request
+- `model` — `OLLAMA_EMBEDDING_MODEL` do env
+- `chunkCount` — chunks gerados pelo chunking
+- `upserted` — pontos upsertados no Qdrant (1 por chunk)
+
+Status codes:
+
+| Código | Caso                                                                                       |
+| ------ | ------------------------------------------------------------------------------------------ |
+| `200`  | ok (resumo da indexação)                                                                   |
+| `400`  | body inválido (schema) / `type` inválida / `content` não-base64 / `source` ausente / zero chunks |
+| `413`  | body maior que 10 MB                                                                       |
+| `422`  | extração falhou (ex.: PDF corrompido — OCR fora de escopo) OU dimension mismatch: `"embedding dimension mismatch (expected X, got Y)"` |
+| `502`  | Ollama ou Qdrant falharam                                                                  |
+
+**Nota: busca (`POST /query`) ainda não existe** — plano futuro.
 
 ### MCP (Streamable HTTP)
 
@@ -119,6 +172,44 @@ Health:
 ```sh
 curl -s http://localhost:8080/health
 # {"status":"ok"}
+```
+
+`POST /index` — markdown com frontmatter Obsidian (`base64 -w 0 < nota.md`
+no Linux; `base64 -i nota.md` no macOS):
+
+```sh
+curl -s -X POST http://localhost:8080/index \
+  -H 'content-type: application/json' \
+  -d "{
+    \"type\": \"markdown\",
+    \"source\": \"nota.md\",
+    \"content\": \"$(base64 -w 0 < nota.md)\"
+  }"
+```
+
+`POST /index` — PDF (`base64 -w 0 < doc.pdf`; macOS: `base64 -i doc.pdf`):
+
+```sh
+curl -s -X POST http://localhost:8080/index \
+  -H 'content-type: application/json' \
+  -d "{
+    \"type\": \"pdf\",
+    \"source\": \"doc.pdf\",
+    \"content\": \"$(base64 -w 0 < doc.pdf)\"
+  }"
+```
+
+`POST /index` — com `chunking` custom:
+
+```sh
+curl -s -X POST http://localhost:8080/index \
+  -H 'content-type: application/json' \
+  -d "{
+    \"type\": \"markdown\",
+    \"source\": \"nota.md\",
+    \"content\": \"$(base64 -w 0 < nota.md)\",
+    \"chunking\": { \"maxChunkChars\": 800, \"overlapChars\": 100 }
+  }"
 ```
 
 MCP — `initialize` (responde com o header `mcp-session-id`; use-o nas
@@ -168,7 +259,8 @@ npm run build     # tsc → dist/
 ## Status
 
 Base pronta: app Fastify, serviços (Ollama, Qdrant, http, logger),
-servidor MCP com tool `health`, Docker + compose, testes.
+servidor MCP com tool `health`, Docker + compose, testes, `POST /index`
+(produção — persiste chunks + embeddings no Qdrant).
 
-Backlog (próximas tasks): chunking de notas, `POST /index`, `GET /query`,
-tools MCP de feature (index/query). Ver nota do vault: `RAG Obsidian.md`.
+Backlog (próximas tasks): `POST /query`, tools MCP de feature
+(index/query). Ver nota do vault: `RAG Obsidian.md`.
