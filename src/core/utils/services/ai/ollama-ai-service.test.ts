@@ -3,8 +3,8 @@ import type { Env } from "../../env.js";
 import { getEnv } from "../../env.js";
 import type { IHttpService } from "../http-service/types.js";
 import type { ILoggerService } from "../logger/types.js";
-import OllamaService from "./ollama-service.js";
-import { OllamaError } from "./types.js";
+import OllamaAiService from "./ollama-ai-service.js";
+import { AIError } from "./types.js";
 
 vi.mock("../../env.js", () => ({
   getEnv: vi.fn(),
@@ -41,12 +41,12 @@ function fakeLogger(): ILoggerService {
 function makeService(post: IHttpService["post"]) {
   const httpService = fakeHttp(post);
   const logger = fakeLogger();
-  const service = new OllamaService(httpService, logger);
+  const service = new OllamaAiService(httpService, logger);
 
   return { service, httpService, logger };
 }
 
-describe("OllamaService.embed", () => {
+describe("OllamaAiService.embed", () => {
   it("returns the vector for a single input", async () => {
     vi.mocked(getEnv).mockReturnValue(env);
     const vector = [0.1, 0.2, 0.3];
@@ -83,7 +83,7 @@ describe("OllamaService.embed", () => {
     expect(result.success).toHaveLength(2);
   });
 
-  it("returns Left(OllamaError) when the http call rejects", async () => {
+  it("returns Left(AIError) when the http call rejects", async () => {
     vi.mocked(getEnv).mockReturnValue(env);
     const post = vi
       .fn()
@@ -94,8 +94,8 @@ describe("OllamaService.embed", () => {
 
     expect(result.isError).toBe(true);
     if (!result.isError) throw result.success;
-    expect(result.error).toBeInstanceOf(OllamaError);
-    expect(result.error.type).toBe("ollama-error");
+    expect(result.error).toBeInstanceOf(AIError);
+    expect(result.error.type).toBe("ai-error");
     expect(logger.error).toHaveBeenCalled();
   });
 
@@ -109,7 +109,7 @@ describe("OllamaService.embed", () => {
 
       expect(result.isError).toBe(true);
       if (!result.isError) throw result.success;
-      expect(result.error).toBeInstanceOf(OllamaError);
+      expect(result.error).toBeInstanceOf(AIError);
       expect(logger.error).toHaveBeenCalled();
     });
 
@@ -124,7 +124,7 @@ describe("OllamaService.embed", () => {
 
       expect(result.isError).toBe(true);
       if (!result.isError) throw result.success;
-      expect(result.error).toBeInstanceOf(OllamaError);
+      expect(result.error).toBeInstanceOf(AIError);
       expect(logger.error).toHaveBeenCalled();
     });
 
@@ -144,7 +144,7 @@ describe("OllamaService.embed", () => {
 
       expect(result.isError).toBe(true);
       if (!result.isError) throw result.success;
-      expect(result.error).toBeInstanceOf(OllamaError);
+      expect(result.error).toBeInstanceOf(AIError);
       expect(logger.error).toHaveBeenCalled();
     });
 
@@ -159,7 +159,7 @@ describe("OllamaService.embed", () => {
 
       expect(result.isError).toBe(true);
       if (!result.isError) throw result.success;
-      expect(result.error).toBeInstanceOf(OllamaError);
+      expect(result.error).toBeInstanceOf(AIError);
       expect(logger.error).toHaveBeenCalled();
     });
   });

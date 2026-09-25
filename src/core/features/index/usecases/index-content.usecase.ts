@@ -1,7 +1,7 @@
 import { getEnv } from "../../../utils/env.js";
 import HttpError from "../../../utils/errors/http-error.js";
 import type { ILoggerService } from "../../../utils/services/logger/types.js";
-import type { IOllamaService } from "../../../utils/services/ollama/types.js";
+import type { IAIService } from "../../../utils/services/ai/types.js";
 import type { IQdrantService } from "../../../utils/services/qdrant/types.js";
 import { Left, Right } from "../../../utils/types.js";
 import type { Either } from "../../../utils/types.js";
@@ -13,7 +13,7 @@ import type { IndexRequest, IndexResult } from "../models/types.js";
 
 export default class IndexContentUsecase {
   constructor(
-    private readonly ollamaService: IOllamaService,
+    private readonly aiService: IAIService,
     private readonly qdrantService: IQdrantService,
     private readonly logger: ILoggerService
   ) {}
@@ -57,7 +57,7 @@ export default class IndexContentUsecase {
       frontmatter ? frontmatter + "\n\n" + chunk.content : chunk.content
     );
 
-    const embeddings = await this.ollamaService.embed(inputs);
+    const embeddings = await this.aiService.embed(inputs);
     if (embeddings.isError) {
       this.logger.error("index-content: failed to embed chunks", {
         type: req.type,

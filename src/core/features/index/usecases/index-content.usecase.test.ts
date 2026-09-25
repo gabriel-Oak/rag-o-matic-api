@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../../../utils/env.js";
 import { getEnv } from "../../../utils/env.js";
+import { AIError, type IAIService } from "../../../utils/services/ai/types.js";
 import type { ILoggerService } from "../../../utils/services/logger/types.js";
-import type { IOllamaService } from "../../../utils/services/ollama/types.js";
-import { OllamaError } from "../../../utils/services/ollama/types.js";
 import type {
   IQdrantService,
   QdrantPoint,
@@ -66,12 +65,12 @@ function makeQdrant(overrides: QdrantOverrides = {}) {
   return { service, upsertedBatches, deleteFilters };
 }
 
-function makeUsecase(embed: IOllamaService["embed"], qdrant: QdrantOverrides = {}) {
-  const ollamaService: IOllamaService = { embed };
+function makeUsecase(embed: IAIService["embed"], qdrant: QdrantOverrides = {}) {
+  const aiService: IAIService = { embed };
   const qdrantFake = makeQdrant(qdrant);
   const logger = fakeLogger();
   const usecase = new IndexContentUsecase(
-    ollamaService,
+    aiService,
     qdrantFake.service,
     logger,
   );
@@ -316,11 +315,11 @@ describe("IndexContentUsecase.execute", () => {
     expect(qdrant.upsertedBatches).toHaveLength(0);
   });
 
-  it("returns Left(HttpError 502) when Ollama fails", async () => {
+  it("returns Left(HttpError 502) when AI fails", async () => {
     const markdown = "# Title\n\nText here.";
     const embed = vi
       .fn()
-      .mockResolvedValue(new Left(new OllamaError("boom")));
+      .mockResolvedValue(new Left(new AIError("boom")));
     const { usecase, logger, qdrant } = makeUsecase(embed);
 
     const result = await usecase.execute(markdownRequest(markdown));
@@ -328,7 +327,7 @@ describe("IndexContentUsecase.execute", () => {
     expect(result.isError).toBe(true);
     if (!result.isError) throw result.success;
     expect(result.error.statusCode).toBe(502);
-    expect(result.error.meta).toBeInstanceOf(OllamaError);
+    expect(result.error.meta).toBeInstanceOf(AIError);
     expect(logger.error).toHaveBeenCalled();
     expect(qdrant.upsertedBatches).toHaveLength(0);
   });

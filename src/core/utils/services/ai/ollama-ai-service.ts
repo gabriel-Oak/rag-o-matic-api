@@ -3,18 +3,19 @@ import type { Either } from "../../types.js";
 import { Left, Right } from "../../types.js";
 import type { IHttpService } from "../http-service/types.js";
 import type { ILoggerService } from "../logger/types.js";
-import type { EmbedResponse, IOllamaService } from "./types.js";
-import { OllamaError } from "./types.js";
+import { AIError, type IAIService } from "./types.js";
 
-export default class OllamaService implements IOllamaService {
+interface EmbedResponse {
+  embeddings: number[][];
+}
+
+export default class OllamaAiService implements IAIService {
   constructor(
     private readonly httpService: IHttpService,
     private readonly logger: ILoggerService
   ) {}
 
-  async embed(
-    inputs: string[]
-  ): Promise<Either<OllamaError, number[][]>> {
+  async embed(inputs: string[]): Promise<Either<AIError, number[][]>> {
     const { OLLAMA_URL, OLLAMA_EMBEDDING_MODEL } = getEnv();
 
     try {
@@ -24,7 +25,7 @@ export default class OllamaService implements IOllamaService {
       );
 
       if (!this.isValidEmbeddings(response?.embeddings, inputs.length)) {
-        const error = new OllamaError(
+        const error = new AIError(
           "Ollama /api/embed returned an invalid response",
           { expected: inputs.length, received: response?.embeddings }
         );
@@ -34,7 +35,7 @@ export default class OllamaService implements IOllamaService {
 
       return new Right(response.embeddings);
     } catch (e) {
-      const error = new OllamaError("Failed to embed inputs via Ollama", {
+      const error = new AIError("Failed to embed inputs via Ollama", {
         error: e,
       });
       this.logger.error(error.message, error);

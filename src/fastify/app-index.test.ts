@@ -17,10 +17,10 @@ vi.mock('../core/utils/env.js', () => ({
   getEnv: vi.fn(() => env),
 }));
 
-vi.mock('../core/utils/services/ollama/ollama-service.js', async () => {
+vi.mock('../core/utils/services/ai/ollama-ai-service.js', async () => {
   const { Right } = await import('../core/utils/types.js');
 
-  class MockOllamaService {
+  class MockAiService {
     async embed(inputs: string[]) {
       return new Right(
         inputs.map(() => new Array<number>(env.QDRANT_DIMENSION).fill(0.1)),
@@ -28,7 +28,7 @@ vi.mock('../core/utils/services/ollama/ollama-service.js', async () => {
     }
   }
 
-  return { default: MockOllamaService };
+  return { default: MockAiService };
 });
 
 vi.mock('../core/utils/services/qdrant/index.js', async () => {
