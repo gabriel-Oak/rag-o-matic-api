@@ -8,8 +8,9 @@ import type {
   VectorSearchHit,
 } from "../../../utils/services/vector-database/types.js";
 import { VectorDatabaseError } from "../../../utils/services/vector-database/types.js";
-import { Left, Right } from "../../../utils/types.js";
-import type { QueryRequest } from "../models/types.js";
+import { Left, Right, type Either } from "../../../utils/types.js";
+import HttpError from "../../../utils/errors/http-error.js";
+import type { QueryRequest, QueryResult } from "../models/types.js";
 import QueryContentUsecase from "./query-content-usecase.js";
 
 vi.mock("../../../utils/env.js", () => ({
@@ -79,6 +80,16 @@ function queryRequest(
   };
 }
 
+function expectRight(result: Either<HttpError, QueryResult>): QueryResult {
+  expect(result.isError).toBe(false);
+  return (result as Right<QueryResult>).success;
+}
+
+function expectLeft(result: Either<HttpError, QueryResult>): HttpError {
+  expect(result.isError).toBe(true);
+  return (result as Left<HttpError>).error;
+}
+
 function vector1024(seed: number): number[] {
   return Array.from({ length: 1024 }, (_, i) => (seed + i) / 1024);
 }
@@ -135,9 +146,8 @@ describe("QueryContentUsecase.execute", () => {
 
     const result = await usecase.execute(queryRequest("what is rag?"));
 
-    expect(result.isError).toBe(false);
-    if (result.isError) throw result.error;
-    expect(result.success).toEqual({
+    const success = expectRight(result);
+    expect(success).toEqual({
       query: "what is rag?",
       count: 2,
       results: [
@@ -161,7 +171,7 @@ describe("QueryContentUsecase.execute", () => {
         },
       ],
     });
-    expect(Object.keys(result.success.results[0]).sort()).toEqual([
+    expect(Object.keys(success.results[0]).sort()).toEqual([
       "chunkIndex",
       "content",
       "headings",
@@ -189,11 +199,10 @@ describe("QueryContentUsecase.execute", () => {
 
     const result = await usecase.execute(queryRequest("what is rag?"));
 
-    expect(result.isError).toBe(true);
-    if (!result.isError) throw result.success;
-    expect(result.error.statusCode).toBe(502);
-    expect(result.error.message).toBe("failed to embed query");
-    expect(result.error.meta).toBeInstanceOf(AIError);
+    const error = expectLeft(result);
+    expect(error.statusCode).toBe(502);
+    expect(error.message).toBe("failed to embed query");
+    expect(error.meta).toBeInstanceOf(AIError);
     expect(logger.error).toHaveBeenCalled();
     expect(qdrant.service.queryPoints).not.toHaveBeenCalled();
   });
@@ -204,10 +213,9 @@ describe("QueryContentUsecase.execute", () => {
 
     const result = await usecase.execute(queryRequest("what is rag?"));
 
-    expect(result.isError).toBe(true);
-    if (!result.isError) throw result.success;
-    expect(result.error.statusCode).toBe(422);
-    expect(result.error.message).toBe(
+    const error = expectLeft(result);
+    expect(error.statusCode).toBe(422);
+    expect(error.message).toBe(
       "embedding dimension mismatch (expected 1024, got 3)",
     );
     expect(logger.error).toHaveBeenCalled();
@@ -225,11 +233,10 @@ describe("QueryContentUsecase.execute", () => {
 
     const result = await usecase.execute(queryRequest("what is rag?"));
 
-    expect(result.isError).toBe(true);
-    if (!result.isError) throw result.success;
-    expect(result.error.statusCode).toBe(502);
-    expect(result.error.message).toBe("failed to query points");
-    expect(result.error.meta).toBeInstanceOf(VectorDatabaseError);
+    const error = expectLeft(result);
+    expect(error.statusCode).toBe(502);
+    expect(error.message).toBe("failed to query points");
+    expect(error.meta).toBeInstanceOf(VectorDatabaseError);
     expect(logger.error).toHaveBeenCalled();
   });
 
@@ -242,9 +249,8 @@ describe("QueryContentUsecase.execute", () => {
 
     const result = await usecase.execute(queryRequest("nothing here"));
 
-    expect(result.isError).toBe(false);
-    if (result.isError) throw result.error;
-    expect(result.success).toEqual({
+    const success = expectRight(result);
+    expect(success).toEqual({
       query: "nothing here",
       count: 0,
       results: [],
