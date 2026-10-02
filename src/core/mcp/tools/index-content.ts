@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { IndexContentUsecase } from '../../features/index/usecases/index-content-usecase.js';
+import type IndexContentUsecase from '../../features/index/usecases/index-content-usecase.js';
 import {
   indexRequestSchema,
   type IndexResult,

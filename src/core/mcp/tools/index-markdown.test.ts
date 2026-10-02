@@ -4,7 +4,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { Left, Right } from '../../utils/types.js';
 import HttpError from '../../utils/errors/http-error.js';
-import type { IndexContentUsecase } from '../../features/index/usecases/index-content-usecase.js';
+import type IndexContentUsecase from '../../features/index/usecases/index-content-usecase.js';
 import { registerIndexMarkdownTool } from './index-markdown.js';
 
 const accentText =
