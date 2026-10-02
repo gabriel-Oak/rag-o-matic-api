@@ -1,7 +1,9 @@
-import { beforeEach, afterEach, describe, expect, it } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type IndexContentUsecase from '../features/index/usecases/index-content-usecase.js';
+import type QueryContentUsecase from '../features/query/usecases/query-content-usecase.js';
 import { createMcpServer } from './mcp-server.js';
 
 describe('createMcpServer (in-memory transport pair)', () => {
@@ -9,10 +11,22 @@ describe('createMcpServer (in-memory transport pair)', () => {
   let server: McpServer;
   let clientTransport: InMemoryTransport;
   let serverTransport: InMemoryTransport;
+  let indexContent: IndexContentUsecase;
+  let queryContent: QueryContentUsecase;
 
   beforeEach(async () => {
     [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    server = createMcpServer({ model: 'bge-m3', collection: 'vault_notes', dimension: 1024 });
+
+    indexContent = { execute: vi.fn() } as unknown as IndexContentUsecase;
+    queryContent = { execute: vi.fn() } as unknown as QueryContentUsecase;
+
+    server = createMcpServer({
+      model: 'bge-m3',
+      collection: 'vault_notes',
+      dimension: 1024,
+      indexContent,
+      queryContent,
+    });
     await server.connect(serverTransport);
 
     client = new Client({ name: 'test-client', version: '1.0.0' });
@@ -24,13 +38,19 @@ describe('createMcpServer (in-memory transport pair)', () => {
     await server.close();
   });
 
-  it('lists the health tool with a description', async () => {
+  it('lists the 4 tools (health, index_content, index_markdown, query) with descriptions', async () => {
     const { tools } = await client.listTools();
 
-    const health = tools.find((tool) => tool.name === 'health');
-    expect(health).toBeDefined();
-    expect(health?.description).toBeTruthy();
-    expect(health?.description).toMatch(/health/i);
+    const names = tools.map((tool) => tool.name).sort();
+    expect(names).toEqual([
+      'health',
+      'index_content',
+      'index_markdown',
+      'query',
+    ]);
+    for (const tool of tools) {
+      expect(tool.description).toBeTruthy();
+    }
   });
 
   it('calls health and returns status ok + RAG config as JSON text', async () => {
