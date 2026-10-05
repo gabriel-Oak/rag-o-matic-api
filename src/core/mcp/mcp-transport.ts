@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import IndexContentUsecase from '../features/index/usecases/index-content-usecase.js';
+import QueryContentUsecase from '../features/query/usecases/query-content-usecase.js';
 import { getEnv } from '../utils/env.js';
+import { createAIService } from '../utils/services/ai/index.js';
+import { createHttpService } from '../utils/services/http-service/index.js';
+import { createVectorDatabaseService } from '../utils/services/vector-database/index.js';
 import createLoggerService from '../utils/services/logger/index.js';
 import { createMcpServer } from './mcp-server.js';
 
@@ -16,6 +21,23 @@ const SESSION_ID_HEADER = 'mcp-session-id';
  */
 export function mountMcp(app: FastifyInstance): void {
   const logger = createLoggerService();
+
+  // Services are stateless (Qdrant REST client is lazy, axios) → built ONCE
+  // here, at mount time, and shared by every session's McpServer.
+  const httpService = createHttpService();
+  const aiService = createAIService(httpService, logger);
+  const vectorDatabaseService = createVectorDatabaseService(logger);
+  const indexContent = new IndexContentUsecase(
+    aiService,
+    vectorDatabaseService,
+    logger,
+  );
+  const queryContent = new QueryContentUsecase(
+    aiService,
+    vectorDatabaseService,
+    logger,
+  );
+
   const sessions = new Map<string, StreamableHTTPServerTransport>();
 
   const findSession = (
@@ -83,6 +105,8 @@ export function mountMcp(app: FastifyInstance): void {
       model: env.OLLAMA_EMBEDDING_MODEL,
       collection: env.QDRANT_COLLECTION,
       dimension: env.QDRANT_DIMENSION,
+      indexContent,
+      queryContent,
     });
     await server.connect(transport);
 

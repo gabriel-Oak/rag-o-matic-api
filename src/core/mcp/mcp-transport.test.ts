@@ -62,7 +62,13 @@ describe('MCP over Streamable HTTP (POST /mcp)', () => {
 
     expect(list.statusCode).toBe(200);
     const tools = (parseSseJson(list.body).result as { tools: { name: string }[] }).tools;
-    expect(tools.some((tool) => tool.name === 'health')).toBe(true);
+    const names = tools.map((tool) => tool.name).sort();
+    expect(names).toEqual([
+      'health',
+      'index_content',
+      'index_markdown',
+      'query',
+    ]);
   });
 
   it('rejects tools/list without a session id (400)', async () => {

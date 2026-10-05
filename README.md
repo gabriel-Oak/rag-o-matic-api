@@ -195,11 +195,22 @@ Status codes:
 `DELETE /mcp` (encerra sessão). Sessão identificada pelo header
 `mcp-session-id` (gerado no `initialize`).
 
-Tool disponível:
+Tools disponíveis:
 
 - **`health`** — status do servidor, uptime e config RAG ativa
   (modelo de embedding, collection Qdrant, dimensão dos vetores).
   Sem argumentos.
+- **`index_content`** — indexa documento (markdown ou PDF) no vector
+  store; re-index do mesmo `source` sobrescreve os chunks anteriores.
+  Args: `type` (`"markdown" | "pdf"`), `content` (base64 dos bytes),
+  `source`, `chunking?`.
+- **`index_markdown`** — indexa **texto markdown puro** (sem base64),
+  frontmatter YAML opcional no topo. Args: `content` (texto), `source`,
+  `chunking?`. Use para markdown em texto puro; `index_content` para
+  PDF/binário.
+- **`query`** — busca semântica top-k (embed via Ollama, busca no
+  Qdrant); resultado vazio não é erro. Args: `q`, `limit?` (1–20,
+  default `5`).
 
 Config de cliente MCP (Claude Desktop e compatíveis):
 
@@ -303,6 +314,61 @@ curl -s -X POST http://localhost:8080/mcp \
 # data: {"result":{"content":[{"type":"text","text":"{\"status\":\"ok\",\"uptime\":49.3,\"config\":{\"model\":\"bge-m3\",\"collection\":\"vault_notes\",\"dimension\":1024}}"}]},"jsonrpc":"2.0","id":2}
 ```
 
+MCP — `tools/list` (mesma sessão):
+
+```sh
+curl -s -X POST http://localhost:8080/mcp \
+  -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -H "mcp-session-id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/list",
+    "params": {}
+  }'
+```
+
+MCP — `tools/call index_markdown` (texto puro — sem converter para
+base64):
+
+```sh
+curl -s -X POST http://localhost:8080/mcp \
+  -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -H "mcp-session-id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "tools/call",
+    "params": {
+      "name": "index_markdown",
+      "arguments": {
+        "content": "---\ntags: [terapia]\n---\n\n# Terapia\n\nConteúdo da nota.",
+        "source": "nota.md"
+      }
+    }
+  }'
+```
+
+MCP — `tools/call query`:
+
+```sh
+curl -s -X POST http://localhost:8080/mcp \
+  -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -H "mcp-session-id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "tools/call",
+    "params": {
+      "name": "query",
+      "arguments": { "q": "notas sobre terapia", "limit": 3 }
+    }
+  }'
+```
+
 ## Testes / qualidade
 
 ```sh
@@ -314,9 +380,9 @@ npm run build     # tsc → dist/
 ## Status
 
 Base pronta: app Fastify, serviços (Ollama, Qdrant, http, logger),
-servidor MCP com tool `health`, Docker + compose, testes, `POST /index`
-(produção — persiste chunks + embeddings no Qdrant), `GET /query`
-(busca top-k de chunks similares).
+servidor MCP com 4 tools (`health`, `index_content`, `index_markdown`,
+`query`), Docker + compose, testes, `POST /index` (produção — persiste
+chunks + embeddings no Qdrant), `GET /query` (busca top-k de chunks
+similares).
 
-Backlog (próximas tasks): tools MCP de feature (index/query).
 Ver nota do vault: `RAG Obsidian.md`.
