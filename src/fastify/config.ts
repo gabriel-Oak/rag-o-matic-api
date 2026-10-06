@@ -1,3 +1,6 @@
 import { config } from 'dotenv';
 
-config({ path: '.env' });
+const result = config({ path: '.env' });
+if (result.error && result.error.code !== 'ENOENT') {
+  throw result.error;
+}
