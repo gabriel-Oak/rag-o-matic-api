@@ -8,4 +8,5 @@ const logger = createLoggerService();
 startServer().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : String(error);
   logger.error(message, error);
+  process.exit(1);
 });

@@ -3,11 +3,9 @@ import { ILoggerService } from './types.js';
 
 export default class LoggerService implements ILoggerService {
   constructor(private readonly logger: Logger) {
-    if (process.env.NODE_ENV !== 'production') {
-      this.logger.add(new winston.transports.Console({
-        format: winston.format.simple()
-      }));
-    }
+    this.logger.add(new winston.transports.Console({
+      format: winston.format.simple()
+    }));
   }
 
   info(message: string, data?: unknown) {
