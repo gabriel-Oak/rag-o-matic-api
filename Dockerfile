@@ -20,10 +20,24 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
+# Separate source maps from compiled JS — runtime image doesn't need them.
+# To include them (e.g. for Sentry), build with:
+#   docker build --build-arg SOURCEMAPS=true -t your-image .
+RUN mkdir -p dist-sourcemaps && \
+    find dist -name '*.map' -exec mv {} dist-sourcemaps/ \;
+
+# TODO: Sentry — upload source maps here when ready:
+#   npx sentry-cli sourcemaps upload ./dist-sourcemaps/
+# Requires: SENTRY_AUTH_TOKEN build arg + sentry-cli in builder image
+# Keep source maps in this stage, discard before runtime.
+
 # ---------------------------------------------------------------------------
 # Stage 2: runtime — production image
 # ---------------------------------------------------------------------------
-FROM node:22-alpine
+ARG SOURCEMAPS=false
+
+FROM node:22-alpine AS runtime
+ARG SOURCEMAPS
 ENV NODE_ENV=production
 WORKDIR /app
 
@@ -38,6 +52,13 @@ COPY package*.json ./
 RUN npm ci --omit=dev --ignore-scripts
 
 COPY --from=builder /app/dist ./dist
+
+# Optional: include source maps (e.g. for Sentry)
+# Build with: --build-arg SOURCEMAPS=true
+COPY --from=builder /app/dist-sourcemaps ./dist-sourcemaps
+RUN if [ "$SOURCEMAPS" = "true" ] && [ -d ./dist-sourcemaps ] && [ "$(ls -A ./dist-sourcemaps 2>/dev/null)" ]; then \
+      cp ./dist-sourcemaps/* ./dist/; \
+    fi
 
 EXPOSE 8080
 
