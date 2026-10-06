@@ -18,10 +18,10 @@ RUN npm ci
 
 COPY tsconfig.json ./
 COPY src ./src
-RUN npm run build
+RUN npm run build && find dist -name '*.map' -delete
 
 # ---------------------------------------------------------------------------
-# Stage 2: runtime — production image
+# Stage 2: runtime — production image (no source maps)
 # ---------------------------------------------------------------------------
 FROM node:22-alpine
 ENV NODE_ENV=production
