@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------
 # Stage 1: builder — compiles TypeScript to dist/
 # ---------------------------------------------------------------------------
-FROM node:22-alpine AS builder
+FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 
 # package*.json first to leverage Docker layer caching
@@ -23,7 +23,7 @@ RUN npm run build && find dist -name '*.map' -delete
 # ---------------------------------------------------------------------------
 # Stage 2: runtime — production image (no source maps)
 # ---------------------------------------------------------------------------
-FROM node:22-alpine
+FROM node:22-bookworm-slim
 ENV NODE_ENV=production
 WORKDIR /app
 
