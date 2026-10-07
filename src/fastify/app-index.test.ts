@@ -65,10 +65,10 @@ describe('POST /index (real app, Ollama mocked)', () => {
     expect(body.upserted).toBe(body.chunkCount);
   });
 
-  it('rejects a body larger than 10 MB with 413', async () => {
+  it('rejects a body larger than 50 MB with 413', async () => {
     const payload = JSON.stringify({
       type: 'markdown',
-      content: 'a'.repeat(11 * 1024 * 1024),
+      content: 'a'.repeat(51 * 1024 * 1024),
       source: 'big.md',
     });
 
