@@ -4,5 +4,8 @@ export default abstract class BaseError extends Error {
   constructor(
     public readonly message: string,
     public readonly meta?: unknown
-  ) { super(); }
+  ) {
+    super();
+    this.name = new.target.name;
+  }
 }

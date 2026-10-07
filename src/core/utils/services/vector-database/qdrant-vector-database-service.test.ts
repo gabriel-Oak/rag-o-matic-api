@@ -89,7 +89,11 @@ describe("QdrantVectorDatabaseService constructor", () => {
     await service.ensureCollection();
 
     expect(QdrantClient).toHaveBeenCalledTimes(1);
-    expect(QdrantClient).toHaveBeenLastCalledWith({ url: QDRANT_URL });
+    expect(QdrantClient).toHaveBeenLastCalledWith({
+      host: "localhost",
+      port: 6333,
+      https: false,
+    });
   });
 
   it("includes the apiKey only when it is set", async () => {
@@ -100,7 +104,9 @@ describe("QdrantVectorDatabaseService constructor", () => {
     const service = new QdrantVectorDatabaseService(fakeLogger());
     await service.ensureCollection();
     expect(QdrantClient).toHaveBeenCalledWith({
-      url: QDRANT_URL,
+      host: "localhost",
+      port: 6333,
+      https: false,
       apiKey: "secret-key",
     });
 
@@ -108,7 +114,41 @@ describe("QdrantVectorDatabaseService constructor", () => {
     vi.mocked(getEnv).mockReturnValue(env);
     const other = new QdrantVectorDatabaseService(fakeLogger());
     await other.ensureCollection();
-    expect(QdrantClient).toHaveBeenCalledWith({ url: QDRANT_URL });
+    expect(QdrantClient).toHaveBeenCalledWith({
+      host: "localhost",
+      port: 6333,
+      https: false,
+    });
+  });
+
+  it.each([
+    {
+      name: "https url without port defaults to 443 (qdrant-js url param drops it)",
+      url: "https://qdrant.example.com",
+      expected: { host: "qdrant.example.com", port: 443, https: true },
+    },
+    {
+      name: "https url with explicit port keeps it",
+      url: "https://qdrant.example.com:7700",
+      expected: { host: "qdrant.example.com", port: 7700, https: true },
+    },
+    {
+      name: "http url without port defaults to 6333",
+      url: "http://qdrant.local",
+      expected: { host: "qdrant.local", port: 6333, https: false },
+    },
+    {
+      name: "http url with explicit port keeps it",
+      url: "http://qdrant.local:7000",
+      expected: { host: "qdrant.local", port: 7000, https: false },
+    },
+  ])("$name", async ({ url, expected }) => {
+    vi.mocked(getEnv).mockReturnValue({ ...env, QDRANT_URL: url });
+    const service = new QdrantVectorDatabaseService(fakeLogger());
+
+    await service.ensureCollection();
+
+    expect(QdrantClient).toHaveBeenCalledWith(expected);
   });
 
   it("uses the injected client when provided", () => {
