@@ -44,6 +44,7 @@ function makeQdrant(overrides: QdrantOverrides = {}) {
     upsertPoints: vi.fn(async () => new Right(undefined)),
     queryPoints: vi.fn(async () => new Right([])),
     deletePointsByFilter: vi.fn(async () => new Right(undefined)),
+    countPointsByFilter: vi.fn(async () => new Right(0)),
     close: vi.fn(async () => undefined),
     ...overrides,
   };

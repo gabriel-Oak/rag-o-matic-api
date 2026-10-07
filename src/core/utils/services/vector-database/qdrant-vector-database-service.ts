@@ -166,6 +166,29 @@ export default class QdrantVectorDatabaseService
     }
   }
 
+  async countPointsByFilter(
+    filter: Record<string, unknown>
+  ): Promise<Either<VectorDatabaseError, number>> {
+    const { QDRANT_COLLECTION } = getEnv();
+
+    try {
+      const res = await this.getClient().count(QDRANT_COLLECTION, {
+        filter: filter as Schemas["Filter"],
+        exact: true,
+      });
+      return new Right(res.count);
+    } catch (e) {
+      const error = new VectorDatabaseError(
+        "Failed to count points in Qdrant",
+        {
+        collection: QDRANT_COLLECTION,
+        error: e,
+      });
+      this.logger.error(error.message, error);
+      return new Left(error);
+    }
+  }
+
   async close(): Promise<void> {
     if (!this.client) {
       return;

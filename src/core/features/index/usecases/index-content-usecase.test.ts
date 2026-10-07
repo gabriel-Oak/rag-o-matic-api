@@ -58,6 +58,7 @@ function makeQdrant(overrides: QdrantOverrides = {}) {
       deleteFilters.push(filter);
       return new Right(undefined);
     }),
+    countPointsByFilter: vi.fn(async () => new Right(0)),
     close: vi.fn(async () => undefined),
     ...overrides,
   };
