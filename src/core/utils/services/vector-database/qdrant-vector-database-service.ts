@@ -32,8 +32,15 @@ export default class QdrantVectorDatabaseService
   private getClient(): QdrantClient {
     if (!this.client) {
       const { QDRANT_URL, QDRANT_API_KEY } = getEnv();
+      // The qdrant-js `url` param drops default ports (new URL().port is "" for
+      // https:443), silently falling back to :6333. Pass host/port/https
+      // explicitly so https endpoints on 443 (e.g. behind a TLS proxy) work.
+      const parsed = new URL(QDRANT_URL);
       this.client = new QdrantClient({
-        url: QDRANT_URL,
+        host: parsed.hostname,
+        port:
+          Number(parsed.port) || (parsed.protocol === "https:" ? 443 : 6333),
+        https: parsed.protocol === "https:",
         ...(QDRANT_API_KEY ? { apiKey: QDRANT_API_KEY } : {}),
       });
     }
