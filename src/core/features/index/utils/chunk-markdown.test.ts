@@ -198,4 +198,28 @@ describe("chunkMarkdown", () => {
     expect(all).toContain("TASK FROM [[*]]");
     expect(all).toContain("Texto importante.");
   });
+
+  it("prefixes chunks with contextLines + the last 2 headings, keeping the full trail in headings", () => {
+    const body = ["# A", "## B", "### C", "Texto de C."].join("\n\n");
+    const chunks = chunkMarkdown(body, { contextLines: ["Pessoas/Mayne.md"] });
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].headings).toEqual(["# A", "## B", "### C"]);
+    expect(chunks[0].content).toBe(
+      "Pessoas/Mayne.md\n\n## B\n\n### C\n\nTexto de C.",
+    );
+  });
+
+  it("prefixes a section under a single heading with the context line + that heading", () => {
+    const body = ["# A", "Texto de A."].join("\n\n");
+    const chunks = chunkMarkdown(body, { contextLines: ["Pessoas/Mayne.md"] });
+    expect(chunks[0].headings).toEqual(["# A"]);
+    expect(chunks[0].content).toBe("Pessoas/Mayne.md\n\n# A\n\nTexto de A.");
+  });
+
+  it("limits the prefix to the last 2 headings of the trail when no contextLines are given", () => {
+    const body = ["# A", "## B", "### C", "Texto de C."].join("\n\n");
+    const chunks = chunkMarkdown(body);
+    expect(chunks[0].headings).toEqual(["# A", "## B", "### C"]);
+    expect(chunks[0].content).toBe("## B\n\n### C\n\nTexto de C.");
+  });
 });

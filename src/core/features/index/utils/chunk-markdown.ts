@@ -4,6 +4,11 @@ export const DEFAULT_OVERLAP_CHARS = 200;
 export interface ChunkMarkdownOptions {
   maxChunkChars?: number;
   overlapChars?: number;
+  /**
+   * Extra context lines (e.g. the source path) prepended to every chunk,
+   * before the heading prefix.
+   */
+  contextLines?: string[];
 }
 
 export interface MarkdownChunk {
@@ -209,10 +214,11 @@ function packSection(text: string, max: number, overlap: number): string[] {
 
 /**
  * Splits a markdown body into embeddable chunks. Each chunk carries the
- * heading trail active at its section (as `headings`, and prefixed to
- * `content` for embedding context) plus a piece of the section text, with
- * `overlapChars` of tail overlap between consecutive pieces of the same
- * section. The final `content` (heading prefix + piece) never exceeds
+ * heading trail active at its section (full trail as `headings`) plus a
+ * piece of the section text, with `overlapChars` of tail overlap between
+ * consecutive pieces of the same section. The content prefix is slim:
+ * `contextLines` plus at most the last 2 headings of the trail (immediate
+ * + parent). The final `content` (prefix + piece) never exceeds
  * `maxChunkChars`: pieces are packed against the budget left by the prefix.
  *
  * Empty / whitespace-only bodies return `[]`.
@@ -223,6 +229,7 @@ export function chunkMarkdown(
 ): MarkdownChunk[] {
   const max = opts?.maxChunkChars ?? DEFAULT_MAX_CHUNK_CHARS;
   const overlap = opts?.overlapChars ?? DEFAULT_OVERLAP_CHARS;
+  const contextLines = opts?.contextLines ?? [];
 
   const normalized = body.replace(/\r\n/g, "\n");
   if (normalized.trim() === "") {
@@ -232,7 +239,8 @@ export function chunkMarkdown(
   const chunks: MarkdownChunk[] = [];
 
   for (const section of collectSections(normalized)) {
-    const prefix = section.trail.length > 0 ? section.trail.join("\n\n") : "";
+    const prefixLines = [...contextLines, ...section.trail.slice(-2)];
+    const prefix = prefixLines.join("\n\n");
     const separator = prefix !== "" ? "\n\n" : "";
     // Budget left for the section text so prefix + piece stays <= max
     // (clamped to 1 when the trail alone is >= max, degenerate case).
