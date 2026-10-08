@@ -28,16 +28,61 @@ interface Section {
 }
 
 /**
+ * A fence line: 3+ backticks or 3+ tildes, optionally followed by an info
+ * string (e.g. ` ```python `). Group 1 is the marker, group 2 the info.
+ */
+const FENCE_PATTERN = /^(`{3,}|~{3,})[ \t]*(.*)$/;
+
+interface FenceState {
+  char: string;
+  length: number;
+  buffer: string[];
+}
+
+/**
+ * Obsidian dataview query blocks (info string starting with `dataview`,
+ * e.g. `dataview` or `dataviewjs`) render their content at display time —
+ * there is nothing to index, so the whole block is skipped.
+ */
+function isDataviewFence(info: string): boolean {
+  return info.toLowerCase().startsWith("dataview");
+}
+
+/**
+ * A closing fence matches the opener's character, is at least as long, and
+ * carries no info string (whitespace only).
+ */
+function isClosingFence(line: string, fence: FenceState): boolean {
+  const match = FENCE_PATTERN.exec(line);
+  if (match === null) {
+    return false;
+  }
+  const marker = match[1];
+  return (
+    marker[0] === fence.char &&
+    marker.length >= fence.length &&
+    match[2].trim() === ""
+  );
+}
+
+/**
  * Walks the document line by line keeping a heading stack (pop while
  * `top.level >= N`, then push), and groups the lines between headings into
  * sections. The pre-heading part is a section with trail `[]`. Sections with
  * empty text are dropped.
+ *
+ * Dataview fences are skipped entirely: the opening fence enters skip mode
+ * and lines are buffered until the matching closing fence, which discards
+ * them. If the fence is never closed (malformed), the buffered lines are
+ * kept as regular content (fail-open) so the rest of the document is not
+ * lost.
  */
 function collectSections(body: string): Section[] {
   const stack: HeadingFrame[] = [];
   const sections: Section[] = [];
   let trail: string[] = [];
   let sectionLines: string[] = [];
+  let fence: FenceState | null = null;
 
   const flush = (): void => {
     const text = sectionLines.join("\n").trim();
@@ -48,6 +93,29 @@ function collectSections(body: string): Section[] {
   };
 
   for (const line of body.split("\n")) {
+    if (fence !== null) {
+      if (isClosingFence(line, fence)) {
+        fence = null;
+      } else {
+        fence.buffer.push(line);
+      }
+      continue;
+    }
+
+    const fenceMatch = FENCE_PATTERN.exec(line);
+    if (fenceMatch !== null) {
+      if (isDataviewFence(fenceMatch[2])) {
+        fence = {
+          char: fenceMatch[1][0],
+          length: fenceMatch[1].length,
+          buffer: [line],
+        };
+      } else {
+        sectionLines.push(line);
+      }
+      continue;
+    }
+
     const match = HEADING_PATTERN.exec(line);
     if (match === null) {
       sectionLines.push(line);
@@ -61,6 +129,12 @@ function collectSections(body: string): Section[] {
     }
     stack.push({ level, line });
     trail = stack.map((heading) => heading.line);
+  }
+
+  if (fence !== null) {
+    // Malformed fence (never closed): fail-open, keep the buffered lines
+    // as regular content.
+    sectionLines.push(...fence.buffer);
   }
   flush();
 

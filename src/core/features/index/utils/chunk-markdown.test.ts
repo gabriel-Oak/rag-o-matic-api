@@ -136,4 +136,66 @@ describe("chunkMarkdown", () => {
       expect(chunk.content.length).toBeLessThanOrEqual(DEFAULT_MAX_CHUNK_CHARS);
     }
   });
+
+  it("drops a section whose only content is a dataview fence", () => {
+    const body = ["## Menções", "```dataview", "TASK FROM [[*]]", "```"]
+      .join("\n");
+    expect(chunkMarkdown(body)).toEqual([]);
+  });
+
+  it("skips dataviewjs fences regardless of info-string case", () => {
+    const body = [
+      "## Menções",
+      "```DataviewJS",
+      "console.log('oi')",
+      "```",
+      "### Outras",
+      "Texto real.",
+    ].join("\n");
+    const chunks = chunkMarkdown(body);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].headings).toEqual(["## Menções", "### Outras"]);
+    expect(chunks[0].content).toContain("Texto real.");
+    expect(chunks[0].content).not.toContain("console.log");
+  });
+
+  it("keeps fences of other languages (e.g. python) intact", () => {
+    const body = ["## Código", "```python", "print('oi')", "```"]
+      .join("\n");
+    const chunks = chunkMarkdown(body);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].headings).toEqual(["## Código"]);
+    expect(chunks[0].content).toContain("```python");
+    expect(chunks[0].content).toContain("print('oi')");
+  });
+
+  it("preserves text outside a mid-section dataview fence", () => {
+    const body = [
+      "## Notas",
+      "Antes do bloco.",
+      "```dataview",
+      "TABLE WITHOUT ID file.link",
+      "```",
+      "Depois do bloco.",
+    ].join("\n");
+    const chunks = chunkMarkdown(body);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].content).toContain("Antes do bloco.");
+    expect(chunks[0].content).toContain("Depois do bloco.");
+    expect(chunks[0].content).not.toContain("TABLE WITHOUT ID");
+  });
+
+  it("keeps the rest of the document when a dataview fence is never closed (fail-open)", () => {
+    const body = [
+      "## Menções",
+      "```dataview",
+      "TASK FROM [[*]]",
+      "## Depois",
+      "Texto importante.",
+    ].join("\n");
+    const chunks = chunkMarkdown(body);
+    const all = chunks.map((chunk) => chunk.content).join("\n");
+    expect(all).toContain("TASK FROM [[*]]");
+    expect(all).toContain("Texto importante.");
+  });
 });
