@@ -34,6 +34,55 @@ curl localhost:8080/health
 
 ---
 
+### DELETE /index/:source
+
+Remove **todos os chunks** indexados sob o `source` do Qdrant.
+**Idempotente**: `source` inexistente → `200` com `deleted: 0`
+(sem 404).
+
+**Request:**
+
+```
+DELETE /index/:source
+```
+
+**Path params:**
+
+| Param    | Tipo   | Obrigatório | Descrição                          |
+| -------- | ------ | ----------- | ---------------------------------- |
+| `source` | string | sim         | Identidade do documento no índice  |
+
+**Response 200:**
+
+```json
+{
+  "source": "nota.md",
+  "deleted": 12
+}
+```
+
+**Response 502 (Qdrant falhou):**
+
+```json
+{
+  "statusCode": 502,
+  "error": "Bad Gateway",
+  "message": "failed to count points for source"
+}
+```
+
+`message` também pode ser `"failed to delete points for source"`
+(count e delete são duas chamadas ao Qdrant).
+
+**Exemplo curl:**
+
+```bash
+curl -X DELETE localhost:8080/index/nota.md
+# → {"source":"nota.md","deleted":12}
+```
+
+---
+
 ### Catch-all 404
 
 Rotas inexistentes retornam `HttpError` 404.
@@ -44,8 +93,7 @@ Rotas inexistentes retornam `HttpError` 404.
 {
   "statusCode": 404,
   "error": "Not Found",
-  "message": "Error, looks like the route you are looking for has been removed or doesn't exists",
-  "meta": "<url da rota>"
+  "message": "Error, looks like the route you are looking for has been removed or doesn't exists"
 }
 ```
 
@@ -53,7 +101,7 @@ Rotas inexistentes retornam `HttpError` 404.
 
 ```bash
 curl localhost:8080/does-not-exist
-# → {"statusCode":404,"error":"Not Found","message":"Error, looks like the route you are looking for has been removed or doesn't exists","meta":"/does-not-exist"}
+# → {"statusCode":404,"error":"Not Found","message":"Error, looks like the route you are looking for has been removed or doesn't exists"}
 ```
 
 ## MCP (Model Context Protocol)
@@ -226,6 +274,72 @@ Encerra a sessão e remove do session map. Requisições subsequentes com o mesm
 | Input Schema | `{}` (sem argumentos) |
 | Output | JSON com `status`, `uptime` (segundos), `config` ({ model, collection, dimension }) |
 
+## Tool: delete_content
+
+| Propriedade | Valor |
+| --- | --- |
+| Nome | `delete_content` |
+| Descrição | Delete all chunks indexed under a given source from the vector store. Idempotent: deleting an unknown source succeeds with deleted: 0. Returns { source, deleted }. |
+| Input Schema | `{ source: string (min 1) }` |
+| Output | JSON com `source` (echo) e `deleted` (nº de pontos removidos do Qdrant) |
+
+**Exemplo — call (sucesso):**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "tools/call",
+  "params": {
+    "name": "delete_content",
+    "arguments": { "source": "nota.md" }
+  }
+}
+```
+
+**Response (sucesso):**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"source\":\"nota.md\",\"deleted\":12}"
+      }
+    ]
+  },
+  "id": 4
+}
+```
+
+**Response (erro — Qdrant falhou, `isError: true`):**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"error\":\"failed to count points for source\",\"status\":502,\"meta\":{...}}"
+      }
+    ],
+    "isError": true
+  },
+  "id": 4
+}
+```
+
+`error`/`status`/`meta` espelham o `HttpError` do usecase (`502` —
+Qdrant falhou no count ou no delete; `meta` com o erro do Qdrant).
+Args inválidos são rejeitados pelo SDK antes do handler (erro
+JSON-RPC `-32602`); o handler mantém uma guarda defensiva que
+responde `isError: true` com `{ "error": "invalid request",
+"status": 400, "meta": [issues do zod] }` caso os args cheguem
+inválidos.
+
 ## Controllers (futuro)
 
 O sistema de decorators está pronto para receber features. Quando implementadas, seguirão o padrão:
@@ -254,17 +368,20 @@ Os controllers são registrados via `buildRoutes(app, [RecursoController])` em `
 
 ## HTTP Error Format
 
-Todos os erros seguem o formato `HttpError`:
+Erros `HttpError` são serializados pelo handler padrão do Fastify:
 
 ```json
 {
   "statusCode": 404,
   "error": "Not Found",
-  "message": "Error message here",
-  "meta": { /* optional, only in non-production */ }
+  "message": "Error message here"
 }
 ```
 
-- `statusCode`: 400, 404, 500, etc.
+- `statusCode`: 400, 404, 500, 502, etc.
+- `error`: status text do HTTP (`Not Found`, `Bad Gateway`, ...)
 - `message`: descrição legível
-- `meta`: detalhes técnicos (apenas `NODE_ENV !== 'production'`)
+
+`meta` (detalhes técnicos, mantida no `HttpError` apenas quando
+`NODE_ENV !== 'production'`) **não** é serializada no body — aparece
+apenas nos logs do servidor.
