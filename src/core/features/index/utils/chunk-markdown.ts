@@ -162,7 +162,11 @@ function splitIntoParagraphs(text: string): string[] {
  * `i = 0, step, 2*step, ...` while `i < p.length`, with
  * `step = max - overlap` (guarded to be at least 1).
  */
-function hardWindows(paragraph: string, max: number, overlap: number): string[] {
+export function hardWindows(
+  paragraph: string,
+  max: number,
+  overlap: number,
+): string[] {
   const step = Math.max(1, max - overlap);
   const windows: string[] = [];
   for (let i = 0; i < paragraph.length; i += step) {
