@@ -64,6 +64,7 @@ describe('MCP over Streamable HTTP (POST /mcp)', () => {
     const tools = (parseSseJson(list.body).result as { tools: { name: string }[] }).tools;
     const names = tools.map((tool) => tool.name).sort();
     expect(names).toEqual([
+      'delete_content',
       'health',
       'index_content',
       'index_markdown',

@@ -1,6 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type IndexContentUsecase from '../features/index/usecases/index-content-usecase.js';
 import type QueryContentUsecase from '../features/query/usecases/query-content-usecase.js';
+import type DeleteSourceUsecase from '../features/delete/usecases/delete-source-usecase.js';
+import { registerDeleteContentTool } from './tools/delete-content.js';
 import { registerHealthTool } from './tools/health.js';
 import { registerIndexContentTool } from './tools/index-content.js';
 import { registerIndexMarkdownTool } from './tools/index-markdown.js';
@@ -12,6 +14,7 @@ export interface McpServerDeps {
   dimension: number;
   indexContent: IndexContentUsecase;
   queryContent: QueryContentUsecase;
+  deleteSource: DeleteSourceUsecase;
 }
 
 /**
@@ -33,6 +36,7 @@ export function createMcpServer(deps: McpServerDeps): McpServer {
   registerIndexContentTool(server, { indexContent: deps.indexContent });
   registerIndexMarkdownTool(server, { indexContent: deps.indexContent });
   registerQueryTool(server, { queryContent: deps.queryContent });
+  registerDeleteContentTool(server, { deleteSource: deps.deleteSource });
 
   return server;
 }

@@ -4,6 +4,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type IndexContentUsecase from '../features/index/usecases/index-content-usecase.js';
 import type QueryContentUsecase from '../features/query/usecases/query-content-usecase.js';
+import type DeleteSourceUsecase from '../features/delete/usecases/delete-source-usecase.js';
 import { createMcpServer } from './mcp-server.js';
 
 describe('createMcpServer (in-memory transport pair)', () => {
@@ -13,12 +14,14 @@ describe('createMcpServer (in-memory transport pair)', () => {
   let serverTransport: InMemoryTransport;
   let indexContent: IndexContentUsecase;
   let queryContent: QueryContentUsecase;
+  let deleteSource: DeleteSourceUsecase;
 
   beforeEach(async () => {
     [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 
     indexContent = { execute: vi.fn() } as unknown as IndexContentUsecase;
     queryContent = { execute: vi.fn() } as unknown as QueryContentUsecase;
+    deleteSource = { execute: vi.fn() } as unknown as DeleteSourceUsecase;
 
     server = createMcpServer({
       model: 'bge-m3',
@@ -26,6 +29,7 @@ describe('createMcpServer (in-memory transport pair)', () => {
       dimension: 1024,
       indexContent,
       queryContent,
+      deleteSource,
     });
     await server.connect(serverTransport);
 
@@ -38,11 +42,12 @@ describe('createMcpServer (in-memory transport pair)', () => {
     await server.close();
   });
 
-  it('lists the 4 tools (health, index_content, index_markdown, query) with descriptions', async () => {
+  it('lists the 5 tools (health, index_content, index_markdown, query, delete_content) with descriptions', async () => {
     const { tools } = await client.listTools();
 
     const names = tools.map((tool) => tool.name).sort();
     expect(names).toEqual([
+      'delete_content',
       'health',
       'index_content',
       'index_markdown',
