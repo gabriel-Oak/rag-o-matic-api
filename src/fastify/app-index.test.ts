@@ -40,6 +40,7 @@ vi.mock('../core/utils/services/vector-database/index.js', async () => {
       upsertPoints: async () => new Right(undefined),
       queryPoints: async () => new Right([]),
       deletePointsByFilter: async () => new Right(undefined),
+      countPointsByFilter: async () => new Right(0),
       close: async () => undefined,
     }),
   };

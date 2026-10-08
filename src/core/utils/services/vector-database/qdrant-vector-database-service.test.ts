@@ -32,6 +32,7 @@ interface FakeQdrantClient {
   upsert: ReturnType<typeof vi.fn>;
   query: ReturnType<typeof vi.fn>;
   delete: ReturnType<typeof vi.fn>;
+  count: ReturnType<typeof vi.fn>;
   close?: ReturnType<typeof vi.fn>;
 }
 
@@ -48,6 +49,7 @@ function makeFakeClient(
     upsert: vi.fn().mockResolvedValue({ result: {} }),
     query: vi.fn().mockResolvedValue({ points: [] }),
     delete: vi.fn().mockResolvedValue({ result: {} }),
+    count: vi.fn().mockResolvedValue({ count: 0 }),
     close: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -371,6 +373,46 @@ describe("QdrantVectorDatabaseService.deletePointsByFilter", () => {
     expect(result.error).toBeInstanceOf(VectorDatabaseError);
     expect(result.error.type).toBe("vector-database-error");
     expect(client.delete).toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalled();
+  });
+});
+
+describe("QdrantVectorDatabaseService.countPointsByFilter", () => {
+  it("delegates the filter to the client and returns the count", async () => {
+    vi.mocked(getEnv).mockReturnValue(env);
+    const { service, client } = makeService(
+      makeFakeClient({
+        count: vi.fn().mockResolvedValue({ count: 7 }),
+      })
+    );
+    const filter = { must: [{ key: "status", match: { value: "active" } }] };
+
+    const result = await service.countPointsByFilter(filter);
+
+    expect(result.isError).toBe(false);
+    if (result.isError) throw result.error;
+    expect(result.success).toBe(7);
+    expect(client.count).toHaveBeenCalledWith("vault_notes", {
+      filter,
+      exact: true,
+    });
+  });
+
+  it("returns Left(VectorDatabaseError) and logs when the client rejects", async () => {
+    vi.mocked(getEnv).mockReturnValue(env);
+    const { service, client, logger } = makeService(
+      makeFakeClient({
+        count: vi.fn().mockRejectedValue(new Error("boom")),
+      })
+    );
+
+    const result = await service.countPointsByFilter({ must: [] });
+
+    expect(result.isError).toBe(true);
+    if (!result.isError) throw result.success;
+    expect(result.error).toBeInstanceOf(VectorDatabaseError);
+    expect(result.error.type).toBe("vector-database-error");
+    expect(client.count).toHaveBeenCalled();
     expect(logger.error).toHaveBeenCalled();
   });
 });

@@ -89,6 +89,7 @@ Os defaults do `.env.example` já apontam para `localhost:11434` e
 | GET    | `/health` | Health check → `{"status":"ok"}` |
 | POST   | `/index`  | Indexa conteúdo (markdown/PDF) — chunks + embeddings persistidos no Qdrant; veja abaixo |
 | GET    | `/query`  | Busca top-k de chunks similares — vetoriza via Ollama, busca no Qdrant; veja abaixo |
+| DELETE | `/index/:source` | Remove todos os chunks de um `source` — idempotente; veja abaixo |
 
 #### `POST /index` — indexação de conteúdo
 
@@ -189,6 +190,37 @@ Status codes:
 | `422`  | dimension mismatch do embedding: `"embedding dimension mismatch (expected X, got Y)"`     |
 | `502`  | Ollama ou Qdrant falharam                                                                  |
 
+#### `DELETE /index/:source` — remover source
+
+Remove **todos os chunks** indexados sob o `source` do Qdrant
+(filter exato por `source`). **Idempotente**: `source` inexistente →
+`200` com `deleted: 0` (sem 404).
+
+Path param:
+
+| Param    | Tipo   | Obrigatório | Descrição                          |
+| -------- | ------ | ----------- | ---------------------------------- |
+| `source` | string | sim         | Identidade do documento no índice  |
+
+Response (200):
+
+```json
+{
+  "source": "nota.md",
+  "deleted": 12
+}
+```
+
+- `source` — echo do `source` do path
+- `deleted` — pontos removidos do Qdrant (`0` se o `source` não existe)
+
+Status codes:
+
+| Código | Caso                                                 |
+| ------ | ---------------------------------------------------- |
+| `200`  | ok (inclui `source` inexistente → `deleted: 0`)     |
+| `502`  | Qdrant falhou (count ou delete)                      |
+
 ### MCP (Streamable HTTP)
 
 `POST /mcp` (requests), `GET /mcp` (stream SSE server→client),
@@ -211,6 +243,9 @@ Tools disponíveis:
 - **`query`** — busca semântica top-k (embed via Ollama, busca no
   Qdrant); resultado vazio não é erro. Args: `q`, `limit?` (1–20,
   default `5`).
+- **`delete_content`** — remove todos os chunks indexados sob um
+  `source` do vector store; idempotente (source inexistente →
+  `deleted: 0`). Args: `source`.
 
 Config de cliente MCP (Claude Desktop e compatíveis):
 
@@ -276,6 +311,14 @@ curl -s -X POST http://localhost:8080/index \
 ```sh
 curl -s 'http://localhost:8080/query?q=notas+sobre+terapia&limit=3'
 # {"query":"notas sobre terapia","count":3,"results":[{"score":0.87,"source":"Terapia 2026-05-20.md","type":"markdown","chunkIndex":2,"headings":["# Terapia 2026-05-20","## Resumo"],"content":"## Resumo\n\n...","indexedAt":"2026-09-24T12:00:00.000Z"}]}
+```
+
+`DELETE /index/:source` — remove todos os chunks de um source
+(idempotente — source inexistente → `deleted: 0`):
+
+```sh
+curl -s -X DELETE http://localhost:8080/index/nota.md
+# {"source":"nota.md","deleted":12}
 ```
 
 MCP — `initialize` (responde com o header `mcp-session-id`; use-o nas
@@ -369,6 +412,24 @@ curl -s -X POST http://localhost:8080/mcp \
   }'
 ```
 
+MCP — `tools/call delete_content`:
+
+```sh
+curl -s -X POST http://localhost:8080/mcp \
+  -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -H "mcp-session-id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "tools/call",
+    "params": {
+      "name": "delete_content",
+      "arguments": { "source": "nota.md" }
+    }
+  }'
+```
+
 ## Testes / qualidade
 
 ```sh
@@ -380,9 +441,10 @@ npm run build     # tsc → dist/
 ## Status
 
 Base pronta: app Fastify, serviços (Ollama, Qdrant, http, logger),
-servidor MCP com 4 tools (`health`, `index_content`, `index_markdown`,
-`query`), Docker + compose, testes, `POST /index` (produção — persiste
-chunks + embeddings no Qdrant), `GET /query` (busca top-k de chunks
-similares).
+servidor MCP com 5 tools (`health`, `index_content`, `index_markdown`,
+`query`, `delete_content`), Docker + compose, testes, `POST /index`
+(produção — persiste chunks + embeddings no Qdrant), `GET /query`
+(busca top-k de chunks similares), `DELETE /index/:source` (remove
+todos os chunks de um source — idempotente).
 
 Ver nota do vault: `RAG Obsidian.md`.

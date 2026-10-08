@@ -28,5 +28,8 @@ export interface IVectorDatabaseService {
   deletePointsByFilter(
     filter: Record<string, unknown>
   ): Promise<Either<VectorDatabaseError, void>>;
+  countPointsByFilter(
+    filter: Record<string, unknown>
+  ): Promise<Either<VectorDatabaseError, number>>;
   close(): Promise<void>;
 }

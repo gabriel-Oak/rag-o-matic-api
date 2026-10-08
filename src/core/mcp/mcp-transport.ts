@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import IndexContentUsecase from '../features/index/usecases/index-content-usecase.js';
 import QueryContentUsecase from '../features/query/usecases/query-content-usecase.js';
+import DeleteSourceUsecase from '../features/delete/usecases/delete-source-usecase.js';
 import { getEnv } from '../utils/env.js';
 import { createAIService } from '../utils/services/ai/index.js';
 import { createHttpService } from '../utils/services/http-service/index.js';
@@ -37,6 +38,7 @@ export function mountMcp(app: FastifyInstance): void {
     vectorDatabaseService,
     logger,
   );
+  const deleteSource = new DeleteSourceUsecase(vectorDatabaseService, logger);
 
   const sessions = new Map<string, StreamableHTTPServerTransport>();
 
@@ -107,6 +109,7 @@ export function mountMcp(app: FastifyInstance): void {
       dimension: env.QDRANT_DIMENSION,
       indexContent,
       queryContent,
+      deleteSource,
     });
     await server.connect(transport);
 
