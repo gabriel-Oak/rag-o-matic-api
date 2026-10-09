@@ -84,3 +84,106 @@ describe('MCP over Streamable HTTP (POST /mcp)', () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+describe('MCP session lifecycle (initialize → health → DELETE → session gone)', () => {
+  const postMcp = (payload: unknown, sessionId?: string) =>
+    app.inject({
+      method: 'POST',
+      url: '/mcp',
+      headers: {
+        'content-type': 'application/json',
+        accept: MCP_ACCEPT,
+        ...(sessionId ? { 'mcp-session-id': sessionId } : {}),
+      },
+      payload,
+    });
+
+  it('closes the session on DELETE and rejects the dead session id afterwards', async () => {
+    // 1. initialize → session id
+    const init = await postMcp({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'test', version: '1.0.0' },
+      },
+    });
+
+    expect(init.statusCode).toBe(200);
+    const sessionId = init.headers['mcp-session-id'];
+    expect(typeof sessionId).toBe('string');
+    expect((sessionId as string).length).toBeGreaterThan(0);
+
+    // 2. tools/call health with the session id → 200, text content parses as
+    //    JSON with status "ok" + RAG config
+    const health = await postMcp(
+      {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/call',
+        params: { name: 'health', arguments: {} },
+      },
+      sessionId as string,
+    );
+
+    expect(health.statusCode).toBe(200);
+    const healthResult = parseSseJson(health.body).result as {
+      content: { type: string; text: string }[];
+    };
+    expect(healthResult.content).toHaveLength(1);
+    expect(healthResult.content[0].type).toBe('text');
+
+    const healthPayload = JSON.parse(healthResult.content[0].text) as {
+      status: string;
+      uptime: number;
+      config: { model: string; collection: string; dimension: number };
+    };
+    expect(healthPayload.status).toBe('ok');
+    expect(healthPayload.uptime).toBeTypeOf('number');
+    expect(healthPayload.config.model).toBeTypeOf('string');
+    expect(healthPayload.config.collection).toBeTypeOf('string');
+    expect(healthPayload.config.dimension).toBeTypeOf('number');
+
+    // 3. DELETE with the session id → 200, session closed
+    const del = await app.inject({
+      method: 'DELETE',
+      url: '/mcp',
+      headers: { 'mcp-session-id': sessionId as string },
+    });
+
+    expect(del.statusCode).toBe(200);
+
+    // 4. The session id is gone:
+    //    - DELETE again (findSession miss) → 404 "Session not found"
+    const delAgain = await app.inject({
+      method: 'DELETE',
+      url: '/mcp',
+      headers: { 'mcp-session-id': sessionId as string },
+    });
+
+    expect(delAgain.statusCode).toBe(404);
+    expect(delAgain.json()).toEqual({ error: 'Session not found' });
+
+    //    - DELETE without any session id → 404 as well
+    const delNoHeader = await app.inject({ method: 'DELETE', url: '/mcp' });
+
+    expect(delNoHeader.statusCode).toBe(404);
+
+    //    - tools/list with the dead session id → rejected. The POST route
+    //      builds a fresh transport for unknown session ids (only GET/DELETE
+    //      404 on a findSession miss), so the SDK rejects the non-initialize
+    //      request on the uninitialized transport with 400.
+    const listAfter = await postMcp(
+      { jsonrpc: '2.0', id: 3, method: 'tools/list', params: {} },
+      sessionId as string,
+    );
+
+    expect(listAfter.statusCode).toBe(400);
+    expect(listAfter.json().error).toEqual({
+      code: -32000,
+      message: 'Bad Request: Server not initialized',
+    });
+  });
+});
