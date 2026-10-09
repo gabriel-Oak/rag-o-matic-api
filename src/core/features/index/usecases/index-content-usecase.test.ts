@@ -10,6 +10,7 @@ import type {
 import { VectorDatabaseError } from "../../../utils/services/vector-database/types.js";
 import { Left, Right } from "../../../utils/types.js";
 import { pointId } from "../utils/build-vector-points.js";
+import { buildSparseVector } from "../utils/sparse-tf.js";
 import type { IndexRequest } from "../models/types.js";
 import IndexContentUsecase from "./index-content-usecase.js";
 
@@ -109,12 +110,16 @@ describe("IndexContentUsecase.execute", () => {
     vi.mocked(getEnv).mockReturnValue(env);
   });
 
-  it("indexes markdown with frontmatter: summary shape, points, delete filter", async () => {
+  it("indexes markdown with frontmatter: metadata chunk 0, points, delete filter", async () => {
     const frontmatter = "tags: [rag]";
     const markdown = `---\n${frontmatter}\n---\n\n# Alpha\n\nFirst section text.\n\n# Beta\n\nSecond section text.`;
+    const metadataContent = "doc.md\n\n## Metadados\n\n" + frontmatter;
+    const chunk1Content = "doc.md\n\n# Alpha\n\nFirst section text.";
+    const chunk2Content = "doc.md\n\n# Beta\n\nSecond section text.";
     const v0 = vector1024(0);
     const v1 = vector1024(1);
-    const embed = vi.fn().mockResolvedValue(new Right([v0, v1]));
+    const v2 = vector1024(2);
+    const embed = vi.fn().mockResolvedValue(new Right([v0, v1, v2]));
     const { usecase, embed: embedMock, qdrant } = makeUsecase(embed);
 
     const result = await usecase.execute(
@@ -127,15 +132,16 @@ describe("IndexContentUsecase.execute", () => {
       source: "doc.md",
       type: "markdown",
       model: "bge-m3",
-      chunkCount: 2,
-      upserted: 2,
+      chunkCount: 3,
+      upserted: 3,
     });
 
     expect(embedMock).toHaveBeenCalledTimes(1);
     const [inputs] = embedMock.mock.calls[0];
     expect(inputs).toEqual([
-      frontmatter + "\n\n# Alpha\n\nFirst section text.",
-      frontmatter + "\n\n# Beta\n\nSecond section text.",
+      metadataContent,
+      chunk1Content,
+      chunk2Content,
     ]);
 
     expect(qdrant.deleteFilters).toEqual([
@@ -144,25 +150,39 @@ describe("IndexContentUsecase.execute", () => {
 
     expect(qdrant.upsertedBatches).toHaveLength(1);
     const [points] = qdrant.upsertedBatches;
-    expect(points).toHaveLength(2);
+    expect(points).toHaveLength(3);
 
     expect(points[0].id).toBe(pointId("doc.md", 0));
     expect(points[1].id).toBe(pointId("doc.md", 1));
+    expect(points[2].id).toBe(pointId("doc.md", 2));
     expect(points[0].vector).toEqual(v0);
     expect(points[1].vector).toEqual(v1);
+    expect(points[2].vector).toEqual(v2);
 
+    // Chunk 0 is the metadata chunk: type overridden, no body text.
     expect(points[0].payload).toMatchObject({
       source: "doc.md",
-      type: "markdown",
+      type: "metadata",
       chunkIndex: 0,
-      content: "# Alpha\n\nFirst section text.",
+      content: metadataContent,
+      headings: ["## Metadados"],
+      frontmatter,
+    });
+    // Chunks 1+ keep the doc type, no frontmatter in their content.
+    expect(points[1].payload).toMatchObject({
+      source: "doc.md",
+      type: "markdown",
+      chunkIndex: 1,
+      content: chunk1Content,
       headings: ["# Alpha"],
       frontmatter,
     });
-    expect(points[1].payload).toMatchObject({
-      chunkIndex: 1,
-      content: "# Beta\n\nSecond section text.",
+    expect(points[2].payload).toMatchObject({
+      type: "markdown",
+      chunkIndex: 2,
+      content: chunk2Content,
       headings: ["# Beta"],
+      frontmatter,
     });
     expect(Object.keys(points[0].payload).sort()).toEqual([
       "chunkIndex",
@@ -174,14 +194,41 @@ describe("IndexContentUsecase.execute", () => {
       "type",
     ]);
 
+    // One sparse vector per final chunk, aligned by index.
+    expect(points[0].sparse).toEqual(buildSparseVector(metadataContent));
+    expect(points[1].sparse).toEqual(buildSparseVector(chunk1Content));
+    expect(points[2].sparse).toEqual(buildSparseVector(chunk2Content));
+
     const indexedAt = points[0].payload.indexedAt;
     expect(typeof indexedAt).toBe("string");
     expect(new Date(indexedAt).toISOString()).toBe(indexedAt);
     expect(points[1].payload.indexedAt).toBe(indexedAt);
+    expect(points[2].payload.indexedAt).toBe(indexedAt);
+  });
+
+  it("logs metadataChunks count on success", async () => {
+    const markdown = "---\ntags: [rag]\n---\n\n# Alpha\n\nText.";
+    const v0 = vector1024(0);
+    const v1 = vector1024(1);
+    const embed = vi.fn().mockResolvedValue(new Right([v0, v1]));
+    const { usecase, logger } = makeUsecase(embed);
+
+    const result = await usecase.execute(markdownRequest(markdown));
+
+    expect(result.isError).toBe(false);
+    expect(logger.info).toHaveBeenCalledWith(
+      "index-content: content indexed",
+      expect.objectContaining({
+        source: "test.md",
+        chunkCount: 2,
+        metadataChunks: 1,
+      }),
+    );
   });
 
   it("omits frontmatter payload key when markdown has no frontmatter", async () => {
     const markdown = "# Title\n\nText here.";
+    const content = "test.md\n\n# Title\n\nText here.";
     const v0 = vector1024(0);
     const embed = vi.fn().mockResolvedValue(new Right([v0]));
     const { usecase, embed: embedMock, qdrant } = makeUsecase(embed);
@@ -200,7 +247,7 @@ describe("IndexContentUsecase.execute", () => {
 
     expect(embedMock).toHaveBeenCalledTimes(1);
     const [inputs] = embedMock.mock.calls[0];
-    expect(inputs).toEqual(["# Title\n\nText here."]);
+    expect(inputs).toEqual([content]);
 
     expect(qdrant.deleteFilters).toEqual([
       { must: [{ key: "source", match: { value: "test.md" } }] },
@@ -210,6 +257,7 @@ describe("IndexContentUsecase.execute", () => {
     expect(points).toHaveLength(1);
     expect(points[0].id).toBe(pointId("test.md", 0));
     expect(points[0].vector).toEqual(v0);
+    expect(points[0].sparse).toEqual(buildSparseVector(content));
     expect(points[0].payload).not.toHaveProperty("frontmatter");
     expect(Object.keys(points[0].payload).sort()).toEqual([
       "chunkIndex",
@@ -219,6 +267,42 @@ describe("IndexContentUsecase.execute", () => {
       "source",
       "type",
     ]);
+  });
+
+  it("indexes frontmatter with empty body as a single metadata chunk (no 400)", async () => {
+    const frontmatter = "tags: [x]";
+    const markdown = `---\n${frontmatter}\n---\n`;
+    const content = "test.md\n\n## Metadados\n\n" + frontmatter;
+    const v0 = vector1024(0);
+    const embed = vi.fn().mockResolvedValue(new Right([v0]));
+    const { usecase, embed: embedMock, qdrant } = makeUsecase(embed);
+
+    const result = await usecase.execute(markdownRequest(markdown));
+
+    expect(result.isError).toBe(false);
+    if (result.isError) throw result.error;
+    expect(result.success).toEqual({
+      source: "test.md",
+      type: "markdown",
+      model: "bge-m3",
+      chunkCount: 1,
+      upserted: 1,
+    });
+
+    expect(embedMock).toHaveBeenCalledTimes(1);
+    expect(embedMock.mock.calls[0][0]).toEqual([content]);
+
+    const [points] = qdrant.upsertedBatches;
+    expect(points).toHaveLength(1);
+    expect(points[0].payload).toMatchObject({
+      source: "test.md",
+      type: "metadata",
+      chunkIndex: 0,
+      content,
+      headings: ["## Metadados"],
+      frontmatter,
+    });
+    expect(points[0].sparse).toEqual(buildSparseVector(content));
   });
 
   it("returns Left(HttpError 422) on embedding dimension mismatch", async () => {
@@ -337,9 +421,8 @@ describe("IndexContentUsecase.execute", () => {
     const embed = vi.fn();
     const { usecase, embed: embedMock, qdrant } = makeUsecase(embed);
 
-    const result = await usecase.execute(
-      markdownRequest("---\ntags: [x]\n---\n"),
-    );
+    // Heading-only body: no section text, no frontmatter → zero chunks.
+    const result = await usecase.execute(markdownRequest("# Title\n"));
 
     expect(result.isError).toBe(true);
     if (!result.isError) throw result.success;

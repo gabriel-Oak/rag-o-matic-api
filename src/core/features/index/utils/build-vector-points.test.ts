@@ -144,4 +144,82 @@ describe("buildPoints", () => {
 
     expect(points).toEqual([]);
   });
+
+  it("attaches sparse vectors aligned by chunk index when provided", () => {
+    const sparse = [
+      [{ index: 1, value: 1 }],
+      [{ index: 2, value: 2 }],
+    ];
+    const points = buildPoints({
+      source: "nota.md",
+      type: "markdown",
+      chunks: [
+        { content: "a", headings: [] },
+        { content: "b", headings: [] },
+      ],
+      embeddings: [
+        [1],
+        [2],
+      ],
+      sparse,
+      indexedAt: INDEXED_AT,
+    });
+
+    expect(points[0].sparse).toEqual(sparse[0]);
+    expect(points[1].sparse).toEqual(sparse[1]);
+  });
+
+  it("omits the sparse key when sparse is not provided", () => {
+    const points = buildPoints({
+      source: "nota.md",
+      type: "markdown",
+      chunks: [{ content: "a", headings: [] }],
+      embeddings: [[1]],
+      indexedAt: INDEXED_AT,
+    });
+
+    expect(points[0]).not.toHaveProperty("sparse");
+  });
+
+  it("marks the first metadataCount chunks with payload type metadata", () => {
+    const points = buildPoints({
+      source: "nota.md",
+      type: "markdown",
+      chunks: [
+        { content: "meta", headings: ["## Metadados"] },
+        { content: "a", headings: ["# Nota"] },
+        { content: "b", headings: ["# Nota"] },
+      ],
+      embeddings: [
+        [1],
+        [2],
+        [3],
+      ],
+      metadataCount: 1,
+      indexedAt: INDEXED_AT,
+    });
+
+    expect(points[0].payload.type).toBe("metadata");
+    expect(points[1].payload.type).toBe("markdown");
+    expect(points[2].payload.type).toBe("markdown");
+  });
+
+  it("keeps the document type for all chunks when metadataCount is absent", () => {
+    const points = buildPoints({
+      source: "doc.pdf",
+      type: "pdf",
+      chunks: [
+        { content: "a", headings: [] },
+        { content: "b", headings: [] },
+      ],
+      embeddings: [
+        [1],
+        [2],
+      ],
+      indexedAt: INDEXED_AT,
+    });
+
+    expect(points[0].payload.type).toBe("pdf");
+    expect(points[1].payload.type).toBe("pdf");
+  });
 });

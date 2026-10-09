@@ -136,4 +136,90 @@ describe("chunkMarkdown", () => {
       expect(chunk.content.length).toBeLessThanOrEqual(DEFAULT_MAX_CHUNK_CHARS);
     }
   });
+
+  it("drops a section whose only content is a dataview fence", () => {
+    const body = ["## Menções", "```dataview", "TASK FROM [[*]]", "```"]
+      .join("\n");
+    expect(chunkMarkdown(body)).toEqual([]);
+  });
+
+  it("skips dataviewjs fences regardless of info-string case", () => {
+    const body = [
+      "## Menções",
+      "```DataviewJS",
+      "console.log('oi')",
+      "```",
+      "### Outras",
+      "Texto real.",
+    ].join("\n");
+    const chunks = chunkMarkdown(body);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].headings).toEqual(["## Menções", "### Outras"]);
+    expect(chunks[0].content).toContain("Texto real.");
+    expect(chunks[0].content).not.toContain("console.log");
+  });
+
+  it("keeps fences of other languages (e.g. python) intact", () => {
+    const body = ["## Código", "```python", "print('oi')", "```"]
+      .join("\n");
+    const chunks = chunkMarkdown(body);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].headings).toEqual(["## Código"]);
+    expect(chunks[0].content).toContain("```python");
+    expect(chunks[0].content).toContain("print('oi')");
+  });
+
+  it("preserves text outside a mid-section dataview fence", () => {
+    const body = [
+      "## Notas",
+      "Antes do bloco.",
+      "```dataview",
+      "TABLE WITHOUT ID file.link",
+      "```",
+      "Depois do bloco.",
+    ].join("\n");
+    const chunks = chunkMarkdown(body);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].content).toContain("Antes do bloco.");
+    expect(chunks[0].content).toContain("Depois do bloco.");
+    expect(chunks[0].content).not.toContain("TABLE WITHOUT ID");
+  });
+
+  it("keeps the rest of the document when a dataview fence is never closed (fail-open)", () => {
+    const body = [
+      "## Menções",
+      "```dataview",
+      "TASK FROM [[*]]",
+      "## Depois",
+      "Texto importante.",
+    ].join("\n");
+    const chunks = chunkMarkdown(body);
+    const all = chunks.map((chunk) => chunk.content).join("\n");
+    expect(all).toContain("TASK FROM [[*]]");
+    expect(all).toContain("Texto importante.");
+  });
+
+  it("prefixes chunks with contextLines + the last 2 headings, keeping the full trail in headings", () => {
+    const body = ["# A", "## B", "### C", "Texto de C."].join("\n\n");
+    const chunks = chunkMarkdown(body, { contextLines: ["Pessoas/Mayne.md"] });
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].headings).toEqual(["# A", "## B", "### C"]);
+    expect(chunks[0].content).toBe(
+      "Pessoas/Mayne.md\n\n## B\n\n### C\n\nTexto de C.",
+    );
+  });
+
+  it("prefixes a section under a single heading with the context line + that heading", () => {
+    const body = ["# A", "Texto de A."].join("\n\n");
+    const chunks = chunkMarkdown(body, { contextLines: ["Pessoas/Mayne.md"] });
+    expect(chunks[0].headings).toEqual(["# A"]);
+    expect(chunks[0].content).toBe("Pessoas/Mayne.md\n\n# A\n\nTexto de A.");
+  });
+
+  it("limits the prefix to the last 2 headings of the trail when no contextLines are given", () => {
+    const body = ["# A", "## B", "### C", "Texto de C."].join("\n\n");
+    const chunks = chunkMarkdown(body);
+    expect(chunks[0].headings).toEqual(["# A", "## B", "### C"]);
+    expect(chunks[0].content).toBe("## B\n\n### C\n\nTexto de C.");
+  });
 });

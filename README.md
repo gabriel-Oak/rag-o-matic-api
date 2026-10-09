@@ -1,8 +1,9 @@
 # rag-o-matic-api
 
-API RAG sobre o vault do Obsidian: indexação de notas + pesquisa com embeddings
-(Ollama `bge-m3`) e busca vetorial (Qdrant). Duas interfaces sobre o mesmo app:
-**REST** e **MCP** (Model Context Protocol, Streamable HTTP).
+API RAG sobre o vault do Obsidian: indexação de notas + busca **híbrida**
+(embedding denso via Ollama `bge-m3` + sparse TF próprio, fusão RRF) no
+Qdrant. Duas interfaces sobre o mesmo app: **REST** e **MCP** (Model
+Context Protocol, Streamable HTTP).
 
 ## Stack
 
@@ -77,8 +78,16 @@ Os defaults do `.env.example` já apontam para `localhost:11434` e
 | `OLLAMA_EMBEDDING_MODEL` | `bge-m3`       | Modelo de embedding                                    |
 | `QDRANT_URL`             | — (obrigatória) | URL do Qdrant REST (ex.: `http://localhost:6333`)     |
 | `QDRANT_API_KEY`         | — (opcional)   | API key do Qdrant (autenticação)                       |
-| `QDRANT_COLLECTION`      | `vault_notes`  | Collection de vetores                                  |
+| `QDRANT_COLLECTION`      | `vault_notes`  | Collection de vetores (dense + sparse v2)              |
 | `QDRANT_DIMENSION`       | `1024`         | Dimensão dos vetores (bge-m3)                          |
+
+> **Coleção v2 (dense + sparse)**: o app cria a coleção com
+> `sparse_vectors.text` (float32, modifier `idf`). Se a coleção **já
+> existir sem** essa config, o app falha com erro claro — `collection
+> ... exists without sparse config — rename QDRANT_COLLECTION or drop
+> it` (a config é imutável; o app não tenta mutar). Após upgrade, use um
+> nome de coleção novo (ex.: `obsidian_vault_v2`) e reindexe — reindex
+> completo via `POST /index` por source.
 
 ## Endpoints
 
@@ -94,10 +103,16 @@ Os defaults do `.env.example` já apontam para `localhost:11434` e
 #### `POST /index` — indexação de conteúdo
 
 Agnóstico de formato: recebe **markdown ou PDF** (bytes originais em
-**base64** no body JSON), extrai o texto, faz chunking markdown-aware,
-gera embeddings via Ollama e **persiste os pontos no Qdrant**
-(collection `vault_notes`, 1024 dimensões, distância Cosine). O response
-é um **resumo** da operação.
+**base64** no body JSON), extrai o texto, faz chunking markdown-aware
+(fences `dataview`/`dataviewjs` são pulados; prefixo de contexto do
+chunk = source + máx. 2 headings, trail completo no payload
+`headings`), gera embedding denso via Ollama + sparse vector próprio
+(unigramas+bigramas, hash FNV-1a) e **persiste os pontos no Qdrant**
+(dense 1024 dimensões, distância Cosine + sparse `text` com modifier
+IDF). Nota com frontmatter ganha um **chunk 0 dedicado `## Metadados`**
+(payload `type: "metadata"`, conteúdo = source + YAML cru) —
+telefone/aniversário/IDs ficam indexados; demais chunks mantêm
+`type: "markdown" | "pdf"`. O response é um **resumo** da operação.
 
 **`source` é obrigatório**: identidade do documento no índice. Re-index do
 mesmo `source` sobrescreve os pontos existentes (delete-then-upsert).
@@ -128,7 +143,8 @@ Response (200):
 
 - `source` — echo do `source` enviado no request
 - `model` — `OLLAMA_EMBEDDING_MODEL` do env
-- `chunkCount` — chunks gerados pelo chunking
+- `chunkCount` — chunks gerados (inclui o chunk de metadados, quando a
+  nota tem frontmatter)
 - `upserted` — pontos upsertados no Qdrant (1 por chunk)
 
 Status codes:
@@ -143,10 +159,12 @@ Status codes:
 
 #### `GET /query` — busca de chunks similares
 
-Recebe a query como string no querystring, **vetoriza via Ollama**
-(`bge-m3`) e busca no **Qdrant** os chunks mais similares (top-k),
-retornando trechos + metadata + score. Resultados vazios → **200 com
-`results: []`** (não é erro).
+Recebe a query como string no querystring e roda **busca híbrida**:
+embedding denso via Ollama (`bge-m3`) + sparse TF próprio
+(unigramas+bigramas, hash FNV-1a, modifier IDF no Qdrant), com fusão
+**RRF** no Qdrant. Retorna os chunks mais relevantes (top-k) com
+trechos + metadata + score. Resultados vazios → **200 com `results:
+[]`** (não é erro).
 
 Querystring:
 
@@ -154,6 +172,7 @@ Querystring:
 | ------- | --------- | ----------- | ------------------------------- |
 | `q`     | string    | sim         | Texto da busca                  |
 | `limit` | int 1–20  | não         | Default `5`; top-k de resultados |
+| `sourcePrefix` | string | não | Restringe a busca a sources sob um prefixo de pasta (ex.: `Pessoas/`) |
 
 Response (200):
 
@@ -169,17 +188,21 @@ Response (200):
       "chunkIndex": 2,
       "headings": ["# Terapia 2026-05-20", "## Resumo"],
       "content": "## Resumo\n\n...",
-      "indexedAt": "2026-09-24T12:00:00.000Z"
+      "indexedAt": "2026-09-24T12:00:00.000Z",
+      "frontmatter": "tags: [terapia]\ndata: 2026-05-20"
     }
   ]
 }
 ```
 
-- `score` — cosine do Qdrant (`[0,1]`, maior = mais similar)
+- `score` — RRF (Reciprocal Rank Fusion) da busca híbrida (`~[0,1]`,
+  maior = mais relevante; **não** é cosine)
 - `count` — `results.length`
+- `frontmatter` — YAML cru da nota, presente apenas quando a nota tem
+  frontmatter
 - **Sem `model` no response** — config ativa (model/collection/dimension)
   visível via tool MCP `health`
-- Sem vector/frontmatter no response
+- Sem vector no response (o `frontmatter` aparece quando presente)
 
 Status codes:
 
@@ -240,9 +263,15 @@ Tools disponíveis:
   frontmatter YAML opcional no topo. Args: `content` (texto), `source`,
   `chunking?`. Use para markdown em texto puro; `index_content` para
   PDF/binário.
-- **`query`** — busca semântica top-k (embed via Ollama, busca no
-  Qdrant); resultado vazio não é erro. Args: `q`, `limit?` (1–20,
-  default `5`).
+- **`query`** — busca híbrida top-k (embed denso via Ollama + sparse TF
+  próprio, fusão RRF no Qdrant); resultado vazio não é erro. Hits podem
+  incluir `frontmatter` (YAML cru da nota). Args: `q`, `limit?` (1–20,
+  default `5`), `sourcePrefix?` (ex.: `"Pessoas/"` — restringe a busca a
+  sources sob o prefixo).
+- **`list_sources`** — lista sources indexados (notas/PDFs) com
+  contagem de chunks. Args: `prefix?` (ex.: `"Projetos/"` — filtra por
+  pasta). Use para perguntas de "o que existe" / "liste X"; depois use
+  `query` para o conteúdo.
 - **`delete_content`** — remove todos os chunks indexados sob um
   `source` do vector store; idempotente (source inexistente →
   `deleted: 0`). Args: `source`.
@@ -306,11 +335,12 @@ curl -s -X POST http://localhost:8080/index \
   }"
 ```
 
-`GET /query` — busca top-k de chunks similares:
+`GET /query` — busca híbrida top-k (score = RRF; `sourcePrefix`
+opcional restringe a busca por pasta):
 
 ```sh
 curl -s 'http://localhost:8080/query?q=notas+sobre+terapia&limit=3'
-# {"query":"notas sobre terapia","count":3,"results":[{"score":0.87,"source":"Terapia 2026-05-20.md","type":"markdown","chunkIndex":2,"headings":["# Terapia 2026-05-20","## Resumo"],"content":"## Resumo\n\n...","indexedAt":"2026-09-24T12:00:00.000Z"}]}
+# {"query":"notas sobre terapia","count":3,"results":[{"score":0.87,"source":"Terapia 2026-05-20.md","type":"markdown","chunkIndex":2,"headings":["# Terapia 2026-05-20","## Resumo"],"content":"## Resumo\n\n...","indexedAt":"2026-09-24T12:00:00.000Z","frontmatter":"tags: [terapia]"}]}
 ```
 
 `DELETE /index/:source` — remove todos os chunks de um source
@@ -412,7 +442,7 @@ curl -s -X POST http://localhost:8080/mcp \
   }'
 ```
 
-MCP — `tools/call delete_content`:
+MCP — `tools/call list_sources`:
 
 ```sh
 curl -s -X POST http://localhost:8080/mcp \
@@ -422,6 +452,24 @@ curl -s -X POST http://localhost:8080/mcp \
   -d '{
     "jsonrpc": "2.0",
     "id": 6,
+    "method": "tools/call",
+    "params": {
+      "name": "list_sources",
+      "arguments": { "prefix": "Projetos/" }
+    }
+  }'
+```
+
+MCP — `tools/call delete_content`:
+
+```sh
+curl -s -X POST http://localhost:8080/mcp \
+  -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -H "mcp-session-id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 7,
     "method": "tools/call",
     "params": {
       "name": "delete_content",
@@ -441,10 +489,10 @@ npm run build     # tsc → dist/
 ## Status
 
 Base pronta: app Fastify, serviços (Ollama, Qdrant, http, logger),
-servidor MCP com 5 tools (`health`, `index_content`, `index_markdown`,
-`query`, `delete_content`), Docker + compose, testes, `POST /index`
-(produção — persiste chunks + embeddings no Qdrant), `GET /query`
-(busca top-k de chunks similares), `DELETE /index/:source` (remove
-todos os chunks de um source — idempotente).
+servidor MCP com 6 tools (`health`, `index_content`, `index_markdown`,
+`query`, `list_sources`, `delete_content`), Docker + compose, testes,
+`POST /index` (produção — persiste chunks dense + sparse no Qdrant),
+`GET /query` (busca híbrida top-k, fusão RRF), `DELETE /index/:source`
+(remove todos os chunks de um source — idempotente).
 
 Ver nota do vault: `RAG Obsidian.md`.

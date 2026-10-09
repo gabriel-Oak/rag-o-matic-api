@@ -5,6 +5,7 @@ import type { IAIService } from "../../../utils/services/ai/types.js";
 import type { IVectorDatabaseService } from "../../../utils/services/vector-database/types.js";
 import { Left, Right } from "../../../utils/types.js";
 import type { Either } from "../../../utils/types.js";
+import { buildSparseVector } from "../../index/utils/sparse-tf.js";
 import type {
   QueryHit,
   QueryRequest,
@@ -50,9 +51,14 @@ export default class QueryContentUsecase {
       );
     }
 
-    const queried = await this.vectorDatabaseService.queryPoints(
+    const sparse = buildSparseVector(req.q);
+    const queried = await this.vectorDatabaseService.queryHybrid(
       vector,
-      req.limit
+      sparse,
+      req.limit,
+      req.sourcePrefix
+        ? { must: [{ key: "source", match: { prefix: req.sourcePrefix } }] }
+        : undefined
     );
     if (queried.isError) {
       this.logger.error("query-content: failed to query points", {
@@ -68,15 +74,21 @@ export default class QueryContentUsecase {
       );
     }
 
-    const results: QueryHit[] = queried.success.map((hit) => ({
-      score: hit.score,
-      source: hit.point.payload.source as string,
-      type: hit.point.payload.type as string,
-      chunkIndex: hit.point.payload.chunkIndex as number,
-      headings: hit.point.payload.headings as string[],
-      content: hit.point.payload.content as string,
-      indexedAt: hit.point.payload.indexedAt as string,
-    }));
+    const results: QueryHit[] = queried.success.map((hit) => {
+      const payload = hit.point.payload;
+      return {
+        score: hit.score,
+        source: payload.source as string,
+        type: payload.type as string,
+        chunkIndex: payload.chunkIndex as number,
+        headings: payload.headings as string[],
+        content: payload.content as string,
+        indexedAt: payload.indexedAt as string,
+        ...(typeof payload.frontmatter === "string"
+          ? { frontmatter: payload.frontmatter }
+          : {}),
+      };
+    });
 
     const count = results.length;
     this.logger.info("query-content: query executed", {

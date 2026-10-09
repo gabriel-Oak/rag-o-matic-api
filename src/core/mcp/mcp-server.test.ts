@@ -5,6 +5,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type IndexContentUsecase from '../features/index/usecases/index-content-usecase.js';
 import type QueryContentUsecase from '../features/query/usecases/query-content-usecase.js';
 import type DeleteSourceUsecase from '../features/delete/usecases/delete-source-usecase.js';
+import type ListSourcesUsecase from '../features/query/usecases/list-sources-usecase.js';
 import { createMcpServer } from './mcp-server.js';
 
 describe('createMcpServer (in-memory transport pair)', () => {
@@ -15,6 +16,7 @@ describe('createMcpServer (in-memory transport pair)', () => {
   let indexContent: IndexContentUsecase;
   let queryContent: QueryContentUsecase;
   let deleteSource: DeleteSourceUsecase;
+  let listSources: ListSourcesUsecase;
 
   beforeEach(async () => {
     [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -22,6 +24,7 @@ describe('createMcpServer (in-memory transport pair)', () => {
     indexContent = { execute: vi.fn() } as unknown as IndexContentUsecase;
     queryContent = { execute: vi.fn() } as unknown as QueryContentUsecase;
     deleteSource = { execute: vi.fn() } as unknown as DeleteSourceUsecase;
+    listSources = { execute: vi.fn() } as unknown as ListSourcesUsecase;
 
     server = createMcpServer({
       model: 'bge-m3',
@@ -30,6 +33,7 @@ describe('createMcpServer (in-memory transport pair)', () => {
       indexContent,
       queryContent,
       deleteSource,
+      listSources,
     });
     await server.connect(serverTransport);
 
@@ -42,7 +46,7 @@ describe('createMcpServer (in-memory transport pair)', () => {
     await server.close();
   });
 
-  it('lists the 5 tools (health, index_content, index_markdown, query, delete_content) with descriptions', async () => {
+  it('lists the 6 tools (health, index_content, index_markdown, query, delete_content, list_sources) with descriptions', async () => {
     const { tools } = await client.listTools();
 
     const names = tools.map((tool) => tool.name).sort();
@@ -51,6 +55,7 @@ describe('createMcpServer (in-memory transport pair)', () => {
       'health',
       'index_content',
       'index_markdown',
+      'list_sources',
       'query',
     ]);
     for (const tool of tools) {

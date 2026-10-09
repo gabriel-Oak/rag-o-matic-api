@@ -51,7 +51,19 @@ export default class QdrantVectorDatabaseService
     const { QDRANT_COLLECTION, QDRANT_DIMENSION } = getEnv();
 
     try {
-      await this.getClient().getCollection(QDRANT_COLLECTION);
+      const collection = await this.getClient().getCollection(
+        QDRANT_COLLECTION
+      );
+
+      const sparseVectors = collection.config.params.sparse_vectors;
+      if (!sparseVectors || !sparseVectors.text) {
+        const error = new VectorDatabaseError(
+          `collection ${QDRANT_COLLECTION} exists without sparse config — rename QDRANT_COLLECTION or drop it`
+        );
+        this.logger.error(error.message, error);
+        return new Left(error);
+      }
+
       return new Right(undefined);
     } catch (e) {
       if (!this.isCollectionNotFound(e)) {
@@ -66,9 +78,15 @@ export default class QdrantVectorDatabaseService
       }
 
       try {
-        await this.getClient().createCollection(QDRANT_COLLECTION, {
-          vectors: { size: QDRANT_DIMENSION, distance: "Cosine" },
-        });
+        await this.getClient().createCollection(
+          QDRANT_COLLECTION,
+          {
+            vectors: { size: QDRANT_DIMENSION, distance: "Cosine" },
+            sparse_vectors: {
+              text: { data_type: "float32", modifier: "idf" },
+            },
+          } as Schemas["CreateCollection"],
+        );
         return new Right(undefined);
       } catch (createError) {
         const error = new VectorDatabaseError(
@@ -90,11 +108,17 @@ export default class QdrantVectorDatabaseService
 
     try {
       await this.getClient().upsert(QDRANT_COLLECTION, {
-        points: points.map((point) => ({
-          id: point.id,
-          vector: point.vector,
-          payload: point.payload,
-        })),
+        points: points.map(
+          (point) =>
+            ({
+              id: point.id,
+              vector: point.vector,
+              payload: point.payload,
+              ...(point.sparse
+                ? { sparse_vectors: { text: point.sparse } }
+                : {}),
+            }) as Schemas["PointStruct"],
+        ),
       });
       return new Right(undefined);
     } catch (e) {
@@ -120,18 +144,7 @@ export default class QdrantVectorDatabaseService
         with_payload: true,
       });
 
-      const hits: VectorSearchHit[] = (response.points ?? []).map(
-        (entry) => ({
-          score: entry.score,
-          point: {
-            id: String(entry.id),
-            vector: this.toVector(entry.vector),
-            payload: entry.payload ?? {},
-          },
-        })
-      );
-
-      return new Right(hits);
+      return new Right(this.toSearchHits(response.points));
     } catch (e) {
       const error = new VectorDatabaseError(
         "Failed to query points from Qdrant",
@@ -139,6 +152,96 @@ export default class QdrantVectorDatabaseService
         collection: QDRANT_COLLECTION,
         error: e,
       });
+      this.logger.error(error.message, error);
+      return new Left(error);
+    }
+  }
+
+  async queryHybrid(
+    dense: number[],
+    sparse: Array<{ index: number; value: number }>,
+    limit: number,
+    filter?: Record<string, unknown>
+  ): Promise<Either<VectorDatabaseError, VectorSearchHit[]>> {
+    const { QDRANT_COLLECTION } = getEnv();
+
+    try {
+      const response = await this.getClient().query(
+        QDRANT_COLLECTION,
+        {
+          query: { fusion: "rrf" },
+          prefetch: [
+            { vector: dense },
+            { sparse: { key: "text", vector: sparse } },
+          ],
+          limit,
+          with_payload: true,
+          ...(filter ? { filter } : {}),
+        } as Schemas["QueryRequest"],
+      );
+
+      return new Right(this.toSearchHits(response.points));
+    } catch (e) {
+      const error = new VectorDatabaseError(
+        "Failed to run hybrid query on Qdrant",
+        {
+          collection: QDRANT_COLLECTION,
+          error: e,
+        },
+      );
+      this.logger.error(error.message, error);
+      return new Left(error);
+    }
+  }
+
+  async listSources(
+    prefix?: string
+  ): Promise<
+    Either<VectorDatabaseError, Array<{ source: string; chunks: number }>>
+  > {
+    const { QDRANT_COLLECTION } = getEnv();
+
+    try {
+      const counts = new Map<string, number>();
+      let offset:
+        | Schemas["ExtendedPointId"]
+        | Record<string, unknown>
+        | null = null;
+
+      do {
+        const page = await this.getClient().scroll(QDRANT_COLLECTION, {
+          limit: 10000,
+          with_payload: ["source"],
+          ...(prefix
+            ? { filter: { must: [{ key: "source", match: { prefix } }] } }
+            : {}),
+          ...(offset !== null ? { offset } : {}),
+        });
+
+        for (const point of page.points) {
+          const source = point.payload?.source;
+          if (typeof source !== "string") {
+            continue;
+          }
+          counts.set(source, (counts.get(source) ?? 0) + 1);
+        }
+
+        offset = page.next_page_offset ?? null;
+      } while (offset !== null);
+
+      return new Right(
+        [...counts.entries()]
+          .map(([source, chunks]) => ({ source, chunks }))
+          .sort((a, b) => (a.source < b.source ? -1 : a.source > b.source ? 1 : 0)),
+      );
+    } catch (e) {
+      const error = new VectorDatabaseError(
+        "Failed to list sources from Qdrant",
+        {
+          collection: QDRANT_COLLECTION,
+          error: e,
+        },
+      );
       this.logger.error(error.message, error);
       return new Left(error);
     }
@@ -202,6 +305,19 @@ export default class QdrantVectorDatabaseService
 
   private isCollectionNotFound(e: unknown): boolean {
     return e instanceof Error && /not found/i.test(e.message);
+  }
+
+  private toSearchHits(
+    points: Schemas["ScoredPoint"][] | undefined
+  ): VectorSearchHit[] {
+    return (points ?? []).map((entry) => ({
+      score: entry.score,
+      point: {
+        id: String(entry.id),
+        vector: this.toVector(entry.vector),
+        payload: entry.payload ?? {},
+      },
+    }));
   }
 
   private toVector(value: unknown): number[] {

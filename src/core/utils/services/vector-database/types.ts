@@ -8,6 +8,7 @@ export class VectorDatabaseError extends BaseError {
 export interface VectorPoint {
   id: string;
   vector: number[];
+  sparse?: Array<{ index: number; value: number }>;
   payload: Record<string, unknown>;
 }
 
@@ -25,6 +26,17 @@ export interface IVectorDatabaseService {
     vector: number[],
     limit: number
   ): Promise<Either<VectorDatabaseError, VectorSearchHit[]>>;
+  queryHybrid(
+    dense: number[],
+    sparse: Array<{ index: number; value: number }>,
+    limit: number,
+    filter?: Record<string, unknown>
+  ): Promise<Either<VectorDatabaseError, VectorSearchHit[]>>;
+  listSources(
+    prefix?: string
+  ): Promise<
+    Either<VectorDatabaseError, Array<{ source: string; chunks: number }>>
+  >;
   deletePointsByFilter(
     filter: Record<string, unknown>
   ): Promise<Either<VectorDatabaseError, void>>;
