@@ -31,6 +31,7 @@ interface FakeQdrantClient {
   createCollection: ReturnType<typeof vi.fn>;
   upsert: ReturnType<typeof vi.fn>;
   query: ReturnType<typeof vi.fn>;
+  queryGroups: ReturnType<typeof vi.fn>;
   delete: ReturnType<typeof vi.fn>;
   count: ReturnType<typeof vi.fn>;
   close?: ReturnType<typeof vi.fn>;
@@ -48,6 +49,7 @@ function makeFakeClient(
     createCollection: vi.fn().mockResolvedValue(true),
     upsert: vi.fn().mockResolvedValue({ result: {} }),
     query: vi.fn().mockResolvedValue({ points: [] }),
+    queryGroups: vi.fn().mockResolvedValue({ groups: [] }),
     delete: vi.fn().mockResolvedValue({ result: {} }),
     count: vi.fn().mockResolvedValue({ count: 0 }),
     close: vi.fn().mockResolvedValue(undefined),
@@ -167,9 +169,20 @@ describe("QdrantVectorDatabaseService constructor", () => {
 });
 
 describe("QdrantVectorDatabaseService.ensureCollection", () => {
-  it("returns Right when the collection already exists", async () => {
+  it("returns Right when the collection already exists with sparse config", async () => {
     vi.mocked(getEnv).mockReturnValue(env);
-    const { service, client } = makeService(makeFakeClient());
+    const { service, client } = makeService(
+      makeFakeClient({
+        getCollection: vi.fn().mockResolvedValue({
+          status: "green",
+          config: {
+            params: {
+              sparse_vectors: { text: { modifier: "idf" } },
+            },
+          },
+        }),
+      })
+    );
 
     const result = await service.ensureCollection();
 
@@ -197,7 +210,55 @@ describe("QdrantVectorDatabaseService.ensureCollection", () => {
     expect(result.success).toBeUndefined();
     expect(client.createCollection).toHaveBeenCalledWith("vault_notes", {
       vectors: { size: 1024, distance: "Cosine" },
+      sparse_vectors: {
+        text: { data_type: "float32", modifier: "idf" },
+      },
     });
+  });
+
+  it("returns Left with a clear message when the collection exists without sparse config", async () => {
+    vi.mocked(getEnv).mockReturnValue(env);
+    const { service, client, logger } = makeService(
+      makeFakeClient({
+        getCollection: vi
+          .fn()
+          .mockResolvedValue({ status: "green", config: { params: {} } }),
+      })
+    );
+
+    const result = await service.ensureCollection();
+
+    expect(result.isError).toBe(true);
+    if (!result.isError) throw result.success;
+    expect(result.error).toBeInstanceOf(VectorDatabaseError);
+    expect(result.error.message).toBe(
+      "collection vault_notes exists without sparse config — rename QDRANT_COLLECTION or drop it"
+    );
+    expect(client.createCollection).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalled();
+  });
+
+  it("returns Left with a clear message when the sparse config has no text vector", async () => {
+    vi.mocked(getEnv).mockReturnValue(env);
+    const { service, client } = makeService(
+      makeFakeClient({
+        getCollection: vi.fn().mockResolvedValue({
+          status: "green",
+          config: {
+            params: { sparse_vectors: { other: { modifier: "idf" } } },
+          },
+        }),
+      })
+    );
+
+    const result = await service.ensureCollection();
+
+    expect(result.isError).toBe(true);
+    if (!result.isError) throw result.success;
+    expect(result.error.message).toBe(
+      "collection vault_notes exists without sparse config — rename QDRANT_COLLECTION or drop it"
+    );
+    expect(client.createCollection).not.toHaveBeenCalled();
   });
 
   it("returns Left(VectorDatabaseError) and logs when getCollection fails with another error", async () => {
@@ -240,6 +301,9 @@ describe("QdrantVectorDatabaseService.ensureCollection", () => {
     expect(result.error).toBeInstanceOf(VectorDatabaseError);
     expect(client.createCollection).toHaveBeenCalledWith("vault_notes", {
       vectors: { size: 1024, distance: "Cosine" },
+      sparse_vectors: {
+        text: { data_type: "float32", modifier: "idf" },
+      },
     });
     expect(logger.error).toHaveBeenCalled();
   });
@@ -262,6 +326,45 @@ describe("QdrantVectorDatabaseService.upsertPoints", () => {
     expect(client.upsert).toHaveBeenCalledWith("vault_notes", {
       points: [
         { id: "a", vector: [1, 2], payload: { text: "one" } },
+        { id: "b", vector: [3, 4], payload: {} },
+      ],
+    });
+  });
+
+  it("passes sparse_vectors when point.sparse is present and omits it otherwise", async () => {
+    vi.mocked(getEnv).mockReturnValue(env);
+    const { service, client } = makeService(makeFakeClient());
+    const points = [
+      {
+        id: "a",
+        vector: [1, 2],
+        sparse: [
+          { index: 3, value: 0.5 },
+          { index: 7, value: 1.2 },
+        ],
+        payload: { text: "one" },
+      },
+      { id: "b", vector: [3, 4], payload: {} },
+    ];
+
+    const result = await service.upsertPoints(points);
+
+    expect(result.isError).toBe(false);
+    if (result.isError) throw result.error;
+    expect(result.success).toBeUndefined();
+    expect(client.upsert).toHaveBeenCalledWith("vault_notes", {
+      points: [
+        {
+          id: "a",
+          vector: [1, 2],
+          payload: { text: "one" },
+          sparse_vectors: {
+            text: [
+              { index: 3, value: 0.5 },
+              { index: 7, value: 1.2 },
+            ],
+          },
+        },
         { id: "b", vector: [3, 4], payload: {} },
       ],
     });
@@ -335,6 +438,170 @@ describe("QdrantVectorDatabaseService.queryPoints", () => {
     );
 
     const result = await service.queryPoints([0.1], 3);
+
+    expect(result.isError).toBe(true);
+    if (!result.isError) throw result.success;
+    expect(result.error).toBeInstanceOf(VectorDatabaseError);
+    expect(result.error.type).toBe("vector-database-error");
+    expect(logger.error).toHaveBeenCalled();
+  });
+});
+
+describe("QdrantVectorDatabaseService.queryHybrid", () => {
+  it("builds the rrf fusion query with dense and sparse prefetches and maps the hits", async () => {
+    vi.mocked(getEnv).mockReturnValue(env);
+    const dense = [0.1, 0.2];
+    const sparse = [
+      { index: 3, value: 0.5 },
+      { index: 7, value: 1.2 },
+    ];
+    const { service, client } = makeService(
+      makeFakeClient({
+        query: vi.fn().mockResolvedValue({
+          points: [
+            {
+              id: "p1",
+              score: 0.9,
+              payload: { text: "hello" },
+              vector: [0.1, 0.2],
+            },
+          ],
+        }),
+      })
+    );
+
+    const result = await service.queryHybrid(dense, sparse, 5);
+
+    expect(result.isError).toBe(false);
+    if (result.isError) throw result.error;
+    expect(result.success).toEqual([
+      {
+        score: 0.9,
+        point: { id: "p1", vector: [0.1, 0.2], payload: { text: "hello" } },
+      },
+    ]);
+    expect(client.query).toHaveBeenCalledWith("vault_notes", {
+      query: { fusion: "rrf" },
+      prefetch: [
+        { vector: dense },
+        { sparse: { key: "text", vector: sparse } },
+      ],
+      limit: 5,
+      with_payload: true,
+    });
+  });
+
+  it("includes the filter only when provided", async () => {
+    vi.mocked(getEnv).mockReturnValue(env);
+    const dense = [0.1];
+    const sparse = [{ index: 3, value: 0.5 }];
+    const { service, client } = makeService(makeFakeClient());
+    const filter = {
+      must: [{ key: "source", match: { prefix: "Pessoas/" } }],
+    };
+
+    const result = await service.queryHybrid(dense, sparse, 3, filter);
+
+    expect(result.isError).toBe(false);
+    if (result.isError) throw result.error;
+    expect(client.query).toHaveBeenCalledWith("vault_notes", {
+      query: { fusion: "rrf" },
+      prefetch: [
+        { vector: dense },
+        { sparse: { key: "text", vector: sparse } },
+      ],
+      limit: 3,
+      with_payload: true,
+      filter,
+    });
+  });
+
+  it("returns Left(VectorDatabaseError) and logs when the client rejects", async () => {
+    vi.mocked(getEnv).mockReturnValue(env);
+    const { service, logger } = makeService(
+      makeFakeClient({
+        query: vi.fn().mockRejectedValue(new Error("boom")),
+      })
+    );
+
+    const result = await service.queryHybrid(
+      [0.1],
+      [{ index: 1, value: 1 }],
+      3
+    );
+
+    expect(result.isError).toBe(true);
+    if (!result.isError) throw result.success;
+    expect(result.error).toBeInstanceOf(VectorDatabaseError);
+    expect(result.error.type).toBe("vector-database-error");
+    expect(logger.error).toHaveBeenCalled();
+  });
+});
+
+describe("QdrantVectorDatabaseService.listSources", () => {
+  it("groups by source and maps the groups to source/chunks", async () => {
+    vi.mocked(getEnv).mockReturnValue(env);
+    const { service, client } = makeService(
+      makeFakeClient({
+        queryGroups: vi.fn().mockResolvedValue({
+          groups: [
+            { id: "Pessoas/Mayne.md", hits: [{ id: "a", score: 1 }] },
+            {
+              id: "Projetos/rag.md",
+              hits: [
+                { id: "b", score: 1 },
+                { id: "c", score: 1 },
+              ],
+            },
+          ],
+        }),
+      })
+    );
+
+    const result = await service.listSources();
+
+    expect(result.isError).toBe(false);
+    if (result.isError) throw result.error;
+    expect(result.success).toEqual([
+      { source: "Pessoas/Mayne.md", chunks: 1 },
+      { source: "Projetos/rag.md", chunks: 2 },
+    ]);
+    expect(client.queryGroups).toHaveBeenCalledWith("vault_notes", {
+      group_by: "source",
+      group_size: 1,
+      limit: 1000,
+      with_payload: false,
+    });
+  });
+
+  it("adds the prefix filter only when provided", async () => {
+    vi.mocked(getEnv).mockReturnValue(env);
+    const { service, client } = makeService(makeFakeClient());
+
+    const result = await service.listSources("Pessoas/");
+
+    expect(result.isError).toBe(false);
+    if (result.isError) throw result.error;
+    expect(client.queryGroups).toHaveBeenCalledWith("vault_notes", {
+      group_by: "source",
+      group_size: 1,
+      limit: 1000,
+      with_payload: false,
+      filter: {
+        must: [{ key: "source", match: { prefix: "Pessoas/" } }],
+      },
+    });
+  });
+
+  it("returns Left(VectorDatabaseError) and logs when the client rejects", async () => {
+    vi.mocked(getEnv).mockReturnValue(env);
+    const { service, logger } = makeService(
+      makeFakeClient({
+        queryGroups: vi.fn().mockRejectedValue(new Error("boom")),
+      })
+    );
+
+    const result = await service.listSources();
 
     expect(result.isError).toBe(true);
     if (!result.isError) throw result.success;
