@@ -74,15 +74,21 @@ export default class QueryContentUsecase {
       );
     }
 
-    const results: QueryHit[] = queried.success.map((hit) => ({
-      score: hit.score,
-      source: hit.point.payload.source as string,
-      type: hit.point.payload.type as string,
-      chunkIndex: hit.point.payload.chunkIndex as number,
-      headings: hit.point.payload.headings as string[],
-      content: hit.point.payload.content as string,
-      indexedAt: hit.point.payload.indexedAt as string,
-    }));
+    const results: QueryHit[] = queried.success.map((hit) => {
+      const payload = hit.point.payload;
+      return {
+        score: hit.score,
+        source: payload.source as string,
+        type: payload.type as string,
+        chunkIndex: payload.chunkIndex as number,
+        headings: payload.headings as string[],
+        content: payload.content as string,
+        indexedAt: payload.indexedAt as string,
+        ...(typeof payload.frontmatter === "string"
+          ? { frontmatter: payload.frontmatter }
+          : {}),
+      };
+    });
 
     const count = results.length;
     this.logger.info("query-content: query executed", {

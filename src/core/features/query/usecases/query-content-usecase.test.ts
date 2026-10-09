@@ -199,6 +199,37 @@ describe("QueryContentUsecase.execute", () => {
     });
   });
 
+  it("includes frontmatter in the hit when the payload has it", async () => {
+    const vector = vector1024(0);
+    const frontmatter = "name: Mayne\nphone: +55 11 96646-8234";
+    const embed = vi.fn().mockResolvedValue(new Right([vector]));
+    const { usecase } = makeUsecase(embed, {
+      queryHybrid: vi.fn(async () =>
+        new Right([makeHit(0.9, { frontmatter })]),
+      ),
+    });
+
+    const result = await usecase.execute(queryRequest("telefone da Mayne?"));
+
+    const success = expectRight(result);
+    expect(success.results).toHaveLength(1);
+    expect(success.results[0].frontmatter).toBe(frontmatter);
+  });
+
+  it("omits the frontmatter property when the payload has none", async () => {
+    const vector = vector1024(0);
+    const embed = vi.fn().mockResolvedValue(new Right([vector]));
+    const { usecase } = makeUsecase(embed, {
+      queryHybrid: vi.fn(async () => new Right([makeHit(0.8)])),
+    });
+
+    const result = await usecase.execute(queryRequest("sem frontmatter"));
+
+    const success = expectRight(result);
+    expect(success.results).toHaveLength(1);
+    expect(success.results[0]).not.toHaveProperty("frontmatter");
+  });
+
   it("returns Left(HttpError 502) when embed fails", async () => {
     const embed = vi
       .fn()

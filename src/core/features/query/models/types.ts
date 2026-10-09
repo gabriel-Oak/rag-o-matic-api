@@ -20,6 +20,11 @@ export interface QueryHit {
   headings: string[];
   content: string;
   indexedAt: string;
+  /**
+   * Raw YAML frontmatter of the note, present only when the indexed point
+   * payload carries a `frontmatter` key.
+   */
+  frontmatter?: string;
 }
 
 export interface QueryResult {

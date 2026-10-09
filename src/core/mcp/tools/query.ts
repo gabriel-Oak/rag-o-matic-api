@@ -21,7 +21,7 @@ export function registerQueryTool(
     {
       title: 'Query',
       description:
-        'Semantic top-k search over indexed notes. Embeds `q` via Ollama and returns the most relevant chunks with score, source, type, chunkIndex, headings, content and indexedAt. An empty result is not an error.',
+        'Semantic top-k search over indexed notes. Embeds `q` via Ollama and returns the most relevant chunks with score, source, type, chunkIndex, headings, content and indexedAt. Hits may include `frontmatter` (raw YAML of the note, when the note has frontmatter). An empty result is not an error.',
       inputSchema: {
         q: z.string().min(1),
         limit: z.number().int().min(1).max(20).optional(),
