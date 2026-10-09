@@ -31,7 +31,7 @@ interface FakeQdrantClient {
   createCollection: ReturnType<typeof vi.fn>;
   upsert: ReturnType<typeof vi.fn>;
   query: ReturnType<typeof vi.fn>;
-  queryGroups: ReturnType<typeof vi.fn>;
+  scroll: ReturnType<typeof vi.fn>;
   delete: ReturnType<typeof vi.fn>;
   count: ReturnType<typeof vi.fn>;
   close?: ReturnType<typeof vi.fn>;
@@ -49,7 +49,7 @@ function makeFakeClient(
     createCollection: vi.fn().mockResolvedValue(true),
     upsert: vi.fn().mockResolvedValue({ result: {} }),
     query: vi.fn().mockResolvedValue({ points: [] }),
-    queryGroups: vi.fn().mockResolvedValue({ groups: [] }),
+    scroll: vi.fn().mockResolvedValue({ points: [], next_page_offset: null }),
     delete: vi.fn().mockResolvedValue({ result: {} }),
     count: vi.fn().mockResolvedValue({ count: 0 }),
     close: vi.fn().mockResolvedValue(undefined),
@@ -539,22 +539,26 @@ describe("QdrantVectorDatabaseService.queryHybrid", () => {
 });
 
 describe("QdrantVectorDatabaseService.listSources", () => {
-  it("groups by source and maps the groups to source/chunks", async () => {
+  it("counts every point per source across pages and sorts by source", async () => {
     vi.mocked(getEnv).mockReturnValue(env);
     const { service, client } = makeService(
       makeFakeClient({
-        queryGroups: vi.fn().mockResolvedValue({
-          groups: [
-            { id: "Pessoas/Mayne.md", hits: [{ id: "a", score: 1 }] },
-            {
-              id: "Projetos/rag.md",
-              hits: [
-                { id: "b", score: 1 },
-                { id: "c", score: 1 },
-              ],
-            },
-          ],
-        }),
+        scroll: vi
+          .fn()
+          .mockResolvedValueOnce({
+            points: [
+              { id: "a1", payload: { source: "Projetos/rag.md" } },
+              { id: "a2", payload: { source: "Pessoas/Mayne.md" } },
+            ],
+            next_page_offset: "a2",
+          })
+          .mockResolvedValueOnce({
+            points: [
+              { id: "a3", payload: { source: "Projetos/rag.md" } },
+              { id: "a4", payload: { source: "Projetos/rag.md" } },
+            ],
+            next_page_offset: null,
+          }),
       })
     );
 
@@ -564,13 +568,17 @@ describe("QdrantVectorDatabaseService.listSources", () => {
     if (result.isError) throw result.error;
     expect(result.success).toEqual([
       { source: "Pessoas/Mayne.md", chunks: 1 },
-      { source: "Projetos/rag.md", chunks: 2 },
+      { source: "Projetos/rag.md", chunks: 3 },
     ]);
-    expect(client.queryGroups).toHaveBeenCalledWith("vault_notes", {
-      group_by: "source",
-      group_size: 1,
-      limit: 1000,
-      with_payload: false,
+    expect(client.scroll).toHaveBeenCalledTimes(2);
+    expect(client.scroll).toHaveBeenNthCalledWith(1, "vault_notes", {
+      limit: 10000,
+      with_payload: ["source"],
+    });
+    expect(client.scroll).toHaveBeenNthCalledWith(2, "vault_notes", {
+      limit: 10000,
+      with_payload: ["source"],
+      offset: "a2",
     });
   });
 
@@ -582,22 +590,62 @@ describe("QdrantVectorDatabaseService.listSources", () => {
 
     expect(result.isError).toBe(false);
     if (result.isError) throw result.error;
-    expect(client.queryGroups).toHaveBeenCalledWith("vault_notes", {
-      group_by: "source",
-      group_size: 1,
-      limit: 1000,
-      with_payload: false,
+    expect(client.scroll).toHaveBeenCalledWith("vault_notes", {
+      limit: 10000,
+      with_payload: ["source"],
       filter: {
         must: [{ key: "source", match: { prefix: "Pessoas/" } }],
       },
     });
+
+    vi.clearAllMocks();
+    await service.listSources();
+    expect(client.scroll).toHaveBeenCalledWith("vault_notes", {
+      limit: 10000,
+      with_payload: ["source"],
+    });
+  });
+
+  it("returns an empty list for an empty collection", async () => {
+    vi.mocked(getEnv).mockReturnValue(env);
+    const { service } = makeService(makeFakeClient());
+
+    const result = await service.listSources();
+
+    expect(result.isError).toBe(false);
+    if (result.isError) throw result.error;
+    expect(result.success).toEqual([]);
+  });
+
+  it("skips points without a string source payload field", async () => {
+    vi.mocked(getEnv).mockReturnValue(env);
+    const { service } = makeService(
+      makeFakeClient({
+        scroll: vi.fn().mockResolvedValue({
+          points: [
+            { id: "a1", payload: null },
+            { id: "a2", payload: { source: 42 } },
+            { id: "a3", payload: { source: "Pessoas/Mayne.md" } },
+          ],
+          next_page_offset: null,
+        }),
+      })
+    );
+
+    const result = await service.listSources();
+
+    expect(result.isError).toBe(false);
+    if (result.isError) throw result.error;
+    expect(result.success).toEqual([
+      { source: "Pessoas/Mayne.md", chunks: 1 },
+    ]);
   });
 
   it("returns Left(VectorDatabaseError) and logs when the client rejects", async () => {
     vi.mocked(getEnv).mockReturnValue(env);
     const { service, logger } = makeService(
       makeFakeClient({
-        queryGroups: vi.fn().mockRejectedValue(new Error("boom")),
+        scroll: vi.fn().mockRejectedValue(new Error("boom")),
       })
     );
 

@@ -202,21 +202,37 @@ export default class QdrantVectorDatabaseService
     const { QDRANT_COLLECTION } = getEnv();
 
     try {
-      const response = await this.getClient().queryGroups(QDRANT_COLLECTION, {
-        group_by: "source",
-        group_size: 1,
-        limit: 1000,
-        with_payload: false,
-        ...(prefix
-          ? { filter: { must: [{ key: "source", match: { prefix } }] } }
-          : {}),
-      });
+      const counts = new Map<string, number>();
+      let offset:
+        | Schemas["ExtendedPointId"]
+        | Record<string, unknown>
+        | null = null;
+
+      do {
+        const page = await this.getClient().scroll(QDRANT_COLLECTION, {
+          limit: 10000,
+          with_payload: ["source"],
+          ...(prefix
+            ? { filter: { must: [{ key: "source", match: { prefix } }] } }
+            : {}),
+          ...(offset !== null ? { offset } : {}),
+        });
+
+        for (const point of page.points) {
+          const source = point.payload?.source;
+          if (typeof source !== "string") {
+            continue;
+          }
+          counts.set(source, (counts.get(source) ?? 0) + 1);
+        }
+
+        offset = page.next_page_offset ?? null;
+      } while (offset !== null);
 
       return new Right(
-        (response.groups ?? []).map((group) => ({
-          source: String(group.id),
-          chunks: group.hits.length,
-        })),
+        [...counts.entries()]
+          .map(([source, chunks]) => ({ source, chunks }))
+          .sort((a, b) => (a.source < b.source ? -1 : a.source > b.source ? 1 : 0)),
       );
     } catch (e) {
       const error = new VectorDatabaseError(
