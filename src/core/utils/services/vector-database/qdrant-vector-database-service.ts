@@ -166,13 +166,24 @@ export default class QdrantVectorDatabaseService
     const { QDRANT_COLLECTION } = getEnv();
 
     try {
+      // Prefetch items MUST carry a `query` field. Without it Qdrant
+      // silently returns points ordered by ID (ignoring the vectors),
+      // which makes the RRF fusion rank storage order instead of
+      // relevance — identical results for every query.
       const response = await this.getClient().query(
         QDRANT_COLLECTION,
         {
           query: { fusion: "rrf" },
           prefetch: [
-            { vector: dense },
-            { sparse: { key: "text", vector: sparse } },
+            { query: dense, limit },
+            {
+              query: {
+                indices: sparse.map((entry) => entry.index),
+                values: sparse.map((entry) => entry.value),
+              },
+              using: "text",
+              limit,
+            },
           ],
           limit,
           with_payload: true,
