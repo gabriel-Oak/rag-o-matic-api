@@ -32,3 +32,8 @@ export interface QueryResult {
   count: number;
   results: QueryHit[];
 }
+
+export interface ListSourcesResult {
+  sources: Array<{ source: string; chunks: number }>;
+  count: number;
+}

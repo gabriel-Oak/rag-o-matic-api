@@ -68,6 +68,7 @@ describe('MCP over Streamable HTTP (POST /mcp)', () => {
       'health',
       'index_content',
       'index_markdown',
+      'list_sources',
       'query',
     ]);
   });

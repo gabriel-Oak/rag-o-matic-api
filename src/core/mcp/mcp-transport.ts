@@ -4,6 +4,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import IndexContentUsecase from '../features/index/usecases/index-content-usecase.js';
 import QueryContentUsecase from '../features/query/usecases/query-content-usecase.js';
 import DeleteSourceUsecase from '../features/delete/usecases/delete-source-usecase.js';
+import ListSourcesUsecase from '../features/query/usecases/list-sources-usecase.js';
 import { getEnv } from '../utils/env.js';
 import { createAIService } from '../utils/services/ai/index.js';
 import { createHttpService } from '../utils/services/http-service/index.js';
@@ -39,6 +40,7 @@ export function mountMcp(app: FastifyInstance): void {
     logger,
   );
   const deleteSource = new DeleteSourceUsecase(vectorDatabaseService, logger);
+  const listSources = new ListSourcesUsecase(vectorDatabaseService, logger);
 
   const sessions = new Map<string, StreamableHTTPServerTransport>();
 
@@ -110,6 +112,7 @@ export function mountMcp(app: FastifyInstance): void {
       indexContent,
       queryContent,
       deleteSource,
+      listSources,
     });
     await server.connect(transport);
 
