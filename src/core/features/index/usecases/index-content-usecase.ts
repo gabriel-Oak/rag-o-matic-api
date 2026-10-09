@@ -5,9 +5,14 @@ import type { IAIService } from "../../../utils/services/ai/types.js";
 import type { IVectorDatabaseService } from "../../../utils/services/vector-database/types.js";
 import { Left, Right } from "../../../utils/types.js";
 import type { Either } from "../../../utils/types.js";
+import { buildMetadataChunk } from "../utils/build-metadata-chunk.js";
 import { buildPoints } from "../utils/build-vector-points.js";
-import { chunkMarkdown } from "../utils/chunk-markdown.js";
+import {
+  DEFAULT_MAX_CHUNK_CHARS,
+  chunkMarkdown,
+} from "../utils/chunk-markdown.js";
 import { extractText } from "../utils/extract-text.js";
+import { buildSparseVector } from "../utils/sparse-tf.js";
 import { splitFrontmatter } from "../utils/split-frontmatter.js";
 import type { IndexRequest, IndexResult } from "../models/types.js";
 
@@ -39,8 +44,19 @@ export default class IndexContentUsecase {
 
     const { frontmatter, body } = splitFrontmatter(extracted.success);
 
-    const chunks = chunkMarkdown(body, req.chunking);
-    if (chunks.length === 0) {
+    const maxChunkChars =
+      req.chunking?.maxChunkChars ?? DEFAULT_MAX_CHUNK_CHARS;
+    const chunks = chunkMarkdown(body, {
+      ...req.chunking,
+      contextLines: [req.source],
+    });
+    const metadataChunks = buildMetadataChunk({
+      frontmatter: frontmatter ?? "",
+      source: req.source,
+      maxChunkChars,
+    });
+    const finalChunks = [...metadataChunks, ...chunks];
+    if (finalChunks.length === 0) {
       this.logger.warn("index-content: no chunks produced", {
         type: req.type,
         source: req.source,
@@ -53,9 +69,8 @@ export default class IndexContentUsecase {
       );
     }
 
-    const inputs = chunks.map((chunk) =>
-      frontmatter ? frontmatter + "\n\n" + chunk.content : chunk.content
-    );
+    const inputs = finalChunks.map((chunk) => chunk.content);
+    const sparse = finalChunks.map((chunk) => buildSparseVector(chunk.content));
 
     const embeddings = await this.aiService.embed(inputs);
     if (embeddings.isError) {
@@ -94,13 +109,15 @@ export default class IndexContentUsecase {
     const points = buildPoints({
       source: req.source,
       type: req.type,
-      chunks: chunks.map((chunk) => ({
+      chunks: finalChunks.map((chunk) => ({
         content: chunk.content,
         headings: chunk.headings,
       })),
       embeddings: embeddings.success,
       frontmatter,
       indexedAt,
+      sparse,
+      metadataCount: metadataChunks.length,
     });
 
     const ensured = await this.vectorDatabaseService.ensureCollection();
@@ -152,7 +169,8 @@ export default class IndexContentUsecase {
 
     this.logger.info("index-content: content indexed", {
       source: req.source,
-      chunkCount: chunks.length,
+      chunkCount: finalChunks.length,
+      metadataChunks: metadataChunks.length,
       upserted: points.length,
     });
 
@@ -160,7 +178,7 @@ export default class IndexContentUsecase {
       source: req.source,
       type: req.type,
       model: getEnv().OLLAMA_EMBEDDING_MODEL,
-      chunkCount: chunks.length,
+      chunkCount: finalChunks.length,
       upserted: points.length,
     };
 

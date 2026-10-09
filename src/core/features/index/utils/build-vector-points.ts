@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { VectorPoint } from "../../../utils/services/vector-database/types.js";
+import type { SparseVectorEntry } from "./sparse-tf.js";
 
 /**
  * Deterministic Qdrant point ID: first 16 bytes of
@@ -31,28 +32,47 @@ export interface BuildPointsArgs {
   embeddings: number[][];
   frontmatter?: string;
   indexedAt: string;
+  /** One sparse vector per chunk, aligned by chunk index. */
+  sparse?: Array<SparseVectorEntry[]>;
+  /** Number of leading chunks that are metadata chunks. */
+  metadataCount?: number;
 }
 
 /**
  * Builds one Qdrant point per chunk. `indexedAt` is passed in (never
  * generated here) so all chunks of a document share one timestamp and the
  * function stays pure. The `frontmatter` payload key is only present when
- * `args.frontmatter` is defined.
+ * `args.frontmatter` is defined. The first `metadataCount` chunks get
+ * payload `type: "metadata"` (overriding the document type); the rest keep
+ * `args.type`. `sparse` entries are attached per point when provided.
  */
 export function buildPoints(args: BuildPointsArgs): VectorPoint[] {
-  const { source, type, chunks, embeddings, frontmatter, indexedAt } = args;
+  const {
+    source,
+    type,
+    chunks,
+    embeddings,
+    frontmatter,
+    indexedAt,
+    sparse,
+    metadataCount = 0,
+  } = args;
 
-  return chunks.map((chunk, i) => ({
-    id: pointId(source, i),
-    vector: embeddings[i],
-    payload: {
-      source,
-      type,
-      chunkIndex: i,
-      content: chunk.content,
-      headings: chunk.headings,
-      ...(frontmatter !== undefined ? { frontmatter } : {}),
-      indexedAt,
-    },
-  }));
+  return chunks.map((chunk, i) => {
+    const sparseVector = sparse?.[i];
+    return {
+      id: pointId(source, i),
+      vector: embeddings[i],
+      ...(sparseVector !== undefined ? { sparse: sparseVector } : {}),
+      payload: {
+        source,
+        type: i < metadataCount ? "metadata" : type,
+        chunkIndex: i,
+        content: chunk.content,
+        headings: chunk.headings,
+        ...(frontmatter !== undefined ? { frontmatter } : {}),
+        indexedAt,
+      },
+    };
+  });
 }
