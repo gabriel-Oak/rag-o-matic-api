@@ -5,6 +5,7 @@ import type { IAIService } from "../../../utils/services/ai/types.js";
 import type { IVectorDatabaseService } from "../../../utils/services/vector-database/types.js";
 import { Left, Right } from "../../../utils/types.js";
 import type { Either } from "../../../utils/types.js";
+import { buildSparseVector } from "../../index/utils/sparse-tf.js";
 import type {
   QueryHit,
   QueryRequest,
@@ -50,9 +51,14 @@ export default class QueryContentUsecase {
       );
     }
 
-    const queried = await this.vectorDatabaseService.queryPoints(
+    const sparse = buildSparseVector(req.q);
+    const queried = await this.vectorDatabaseService.queryHybrid(
       vector,
-      req.limit
+      sparse,
+      req.limit,
+      req.sourcePrefix
+        ? { must: [{ key: "source", match: { prefix: req.sourcePrefix } }] }
+        : undefined
     );
     if (queried.isError) {
       this.logger.error("query-content: failed to query points", {

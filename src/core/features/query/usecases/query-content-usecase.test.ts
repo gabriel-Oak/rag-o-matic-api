@@ -10,6 +10,7 @@ import type {
 import { VectorDatabaseError } from "../../../utils/services/vector-database/types.js";
 import { Left, Right, type Either } from "../../../utils/types.js";
 import HttpError from "../../../utils/errors/http-error.js";
+import { buildSparseVector } from "../../index/utils/sparse-tf.js";
 import type { QueryRequest, QueryResult } from "../models/types.js";
 import QueryContentUsecase from "./query-content-usecase.js";
 
@@ -36,13 +37,14 @@ function fakeLogger(): ILoggerService {
   };
 }
 
-type QdrantOverrides = Partial<Pick<IVectorDatabaseService, "queryPoints">>;
+type QdrantOverrides = Partial<Pick<IVectorDatabaseService, "queryHybrid">>;
 
 function makeQdrant(overrides: QdrantOverrides = {}) {
   const service: IVectorDatabaseService = {
     ensureCollection: vi.fn(async () => new Right(undefined)),
     upsertPoints: vi.fn(async () => new Right(undefined)),
     queryPoints: vi.fn(async () => new Right([])),
+    queryHybrid: vi.fn(async () => new Right([])),
     deletePointsByFilter: vi.fn(async () => new Right(undefined)),
     countPointsByFilter: vi.fn(async () => new Right(0)),
     close: vi.fn(async () => undefined),
@@ -142,7 +144,7 @@ describe("QueryContentUsecase.execute", () => {
     ];
     const embed = vi.fn().mockResolvedValue(new Right([vector]));
     const { usecase, embed: embedMock, logger, qdrant } = makeUsecase(embed, {
-      queryPoints: vi.fn(async () => new Right(hits)),
+      queryHybrid: vi.fn(async () => new Right(hits)),
     });
 
     const result = await usecase.execute(queryRequest("what is rag?"));
@@ -184,7 +186,12 @@ describe("QueryContentUsecase.execute", () => {
 
     expect(embedMock).toHaveBeenCalledTimes(1);
     expect(embedMock).toHaveBeenCalledWith(["what is rag?"]);
-    expect(qdrant.service.queryPoints).toHaveBeenCalledWith(vector, 5);
+    expect(qdrant.service.queryHybrid).toHaveBeenCalledWith(
+      vector,
+      buildSparseVector("what is rag?"),
+      5,
+      undefined,
+    );
     expect(logger.info).toHaveBeenCalledWith("query-content: query executed", {
       q: "what is rag?",
       limit: 5,
@@ -205,7 +212,7 @@ describe("QueryContentUsecase.execute", () => {
     expect(error.message).toBe("failed to embed query");
     expect(error.meta).toBeInstanceOf(AIError);
     expect(logger.error).toHaveBeenCalled();
-    expect(qdrant.service.queryPoints).not.toHaveBeenCalled();
+    expect(qdrant.service.queryHybrid).not.toHaveBeenCalled();
   });
 
   it("returns Left(HttpError 422) on embedding dimension mismatch", async () => {
@@ -220,14 +227,14 @@ describe("QueryContentUsecase.execute", () => {
       "embedding dimension mismatch (expected 1024, got 3)",
     );
     expect(logger.error).toHaveBeenCalled();
-    expect(qdrant.service.queryPoints).not.toHaveBeenCalled();
+    expect(qdrant.service.queryHybrid).not.toHaveBeenCalled();
   });
 
-  it("returns Left(HttpError 502) when queryPoints fails", async () => {
+  it("returns Left(HttpError 502) when queryHybrid fails", async () => {
     const vector = vector1024(0);
     const embed = vi.fn().mockResolvedValue(new Right([vector]));
     const { usecase, logger } = makeUsecase(embed, {
-      queryPoints: vi.fn(
+      queryHybrid: vi.fn(
         async () => new Left(new VectorDatabaseError("boom")),
       ),
     });
@@ -245,7 +252,7 @@ describe("QueryContentUsecase.execute", () => {
     const vector = vector1024(0);
     const embed = vi.fn().mockResolvedValue(new Right([vector]));
     const { usecase, logger, qdrant } = makeUsecase(embed, {
-      queryPoints: vi.fn(async () => new Right([])),
+      queryHybrid: vi.fn(async () => new Right([])),
     });
 
     const result = await usecase.execute(queryRequest("nothing here"));
@@ -261,6 +268,31 @@ describe("QueryContentUsecase.execute", () => {
       limit: 5,
       count: 0,
     });
-    expect(qdrant.service.queryPoints).toHaveBeenCalledWith(vector, 5);
+    expect(qdrant.service.queryHybrid).toHaveBeenCalledWith(
+      vector,
+      buildSparseVector("nothing here"),
+      5,
+      undefined,
+    );
+  });
+
+  it("passes source prefix filter to queryHybrid when sourcePrefix is set", async () => {
+    const vector = vector1024(0);
+    const embed = vi.fn().mockResolvedValue(new Right([vector]));
+    const { usecase, qdrant } = makeUsecase(embed, {
+      queryHybrid: vi.fn(async () => new Right([])),
+    });
+
+    const result = await usecase.execute(
+      queryRequest("reunião de pessoas", { sourcePrefix: "Pessoas/" }),
+    );
+
+    expectRight(result);
+    expect(qdrant.service.queryHybrid).toHaveBeenCalledWith(
+      vector,
+      buildSparseVector("reunião de pessoas"),
+      5,
+      { must: [{ key: "source", match: { prefix: "Pessoas/" } }] },
+    );
   });
 });
