@@ -483,12 +483,34 @@ describe("QdrantVectorDatabaseService.queryHybrid", () => {
     expect(client.query).toHaveBeenCalledWith("vault_notes", {
       query: { fusion: "rrf" },
       prefetch: [
-        { vector: dense },
-        { sparse: { key: "text", vector: sparse } },
+        { query: dense, limit: 5 },
+        {
+          query: { indices: [3, 7], values: [0.5, 1.2] },
+          using: "text",
+          limit: 5,
+        },
       ],
       limit: 5,
       with_payload: true,
     });
+  });
+
+  it("keeps a query inside every prefetch (Qdrant silently falls back to ID order when a prefetch has no query)", async () => {
+    vi.mocked(getEnv).mockReturnValue(env);
+    const { service, client } = makeService(makeFakeClient());
+
+    await service.queryHybrid([0.1], [{ index: 3, value: 0.5 }], 7);
+
+    const request = vi.mocked(client.query).mock.calls[0][1];
+    const prefetches: Array<Record<string, unknown>> = Array.isArray(
+      request.prefetch,
+    )
+      ? request.prefetch
+      : [request.prefetch];
+    expect(prefetches).toHaveLength(2);
+    for (const prefetch of prefetches) {
+      expect(prefetch).toHaveProperty("query");
+    }
   });
 
   it("includes the filter only when provided", async () => {
@@ -507,8 +529,12 @@ describe("QdrantVectorDatabaseService.queryHybrid", () => {
     expect(client.query).toHaveBeenCalledWith("vault_notes", {
       query: { fusion: "rrf" },
       prefetch: [
-        { vector: dense },
-        { sparse: { key: "text", vector: sparse } },
+        { query: dense, limit: 3 },
+        {
+          query: { indices: [3], values: [0.5] },
+          using: "text",
+          limit: 3,
+        },
       ],
       limit: 3,
       with_payload: true,
