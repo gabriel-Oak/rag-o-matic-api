@@ -186,4 +186,51 @@ describe('MCP session lifecycle (initialize → health → DELETE → session go
       message: 'Bad Request: Server not initialized',
     });
   });
+
+  it('closes the session on DELETE sent with content-type application/json and an empty body (real MCP SDK client behavior)', async () => {
+    // @modelcontextprotocol/sdk sends terminateSession() as a DELETE with the
+    // same headers as its POSTs (content-type: application/json) and no body.
+    // Fastify's default JSON parser rejects that with 400
+    // (FST_ERR_CTP_EMPTY_JSON_BODY) before the route handler runs, so the
+    // session could never be terminated by a real client.
+    const init = await postMcp({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'test', version: '1.0.0' },
+      },
+    });
+
+    expect(init.statusCode).toBe(200);
+    const sessionId = init.headers['mcp-session-id'];
+    expect(typeof sessionId).toBe('string');
+
+    const del = await app.inject({
+      method: 'DELETE',
+      url: '/mcp',
+      headers: {
+        'content-type': 'application/json',
+        accept: MCP_ACCEPT,
+        'mcp-session-id': sessionId as string,
+      },
+    });
+
+    expect(del.statusCode).toBe(200);
+
+    const delAgain = await app.inject({
+      method: 'DELETE',
+      url: '/mcp',
+      headers: {
+        'content-type': 'application/json',
+        accept: MCP_ACCEPT,
+        'mcp-session-id': sessionId as string,
+      },
+    });
+
+    expect(delAgain.statusCode).toBe(404);
+    expect(delAgain.json()).toEqual({ error: 'Session not found' });
+  });
 });
