@@ -38,6 +38,7 @@ describe('registerQueryTool (in-memory transport pair)', () => {
     const tool = tools.find((t) => t.name === 'query');
     expect(tool).toBeDefined();
     expect(tool?.description).toBeTruthy();
+    expect(tool?.inputSchema?.properties?.sourcePrefix).toBeDefined();
   });
 
   it('returns the QueryResult JSON when the usecase resolves Right', async () => {
@@ -84,6 +85,62 @@ describe('registerQueryTool (in-memory transport pair)', () => {
     expect(execute).toHaveBeenCalledTimes(1);
     expect(execute).toHaveBeenCalledWith({ q: 'apple', limit: 5 });
   });
+
+  it('passes sourcePrefix to the usecase', async () => {
+    execute.mockResolvedValue(
+      new Right({ query: 'apple', count: 0, results: [] }),
+    );
+
+    const response = (await client.callTool({
+      name: 'query',
+      arguments: { q: 'apple', sourcePrefix: 'Pessoas/' },
+    })) as { content?: Array<{ type: string; text?: string }>; isError?: boolean };
+
+    expect(response.isError).not.toBe(true);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute).toHaveBeenCalledWith({
+      q: 'apple',
+      limit: 5,
+      sourcePrefix: 'Pessoas/',
+    });
+  });
+
+  it('trims sourcePrefix before passing it to the usecase', async () => {
+    execute.mockResolvedValue(
+      new Right({ query: 'apple', count: 0, results: [] }),
+    );
+
+    const response = (await client.callTool({
+      name: 'query',
+      arguments: { q: 'apple', sourcePrefix: '  Pessoas/  ' },
+    })) as { content?: Array<{ type: string; text?: string }>; isError?: boolean };
+
+    expect(response.isError).not.toBe(true);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute).toHaveBeenCalledWith({
+      q: 'apple',
+      limit: 5,
+      sourcePrefix: 'Pessoas/',
+    });
+  });
+
+  it.each(['', '   '])(
+    'rejects empty/whitespace-only sourcePrefix (%j) without calling the usecase',
+    async (sourcePrefix) => {
+      const response = (await client.callTool({
+        name: 'query',
+        arguments: { q: 'apple', sourcePrefix },
+      })) as {
+        content?: Array<{ type: string; text?: string }>;
+        isError?: boolean;
+      };
+
+      expect(response.isError).toBe(true);
+      const block = response.content?.[0];
+      expect(block?.type).toBe('text');
+      expect(execute).not.toHaveBeenCalled();
+    },
+  );
 
   it('passes an explicit limit to the usecase', async () => {
     execute.mockResolvedValue(
