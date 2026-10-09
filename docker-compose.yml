@@ -1,36 +1,12 @@
-# Local dev dependencies (no TrueNAS needed): Ollama + Qdrant.
-#
-# Usage:
-#   docker compose up -d
-#   docker compose exec ollama ollama pull bge-m3
-#
-# Then run the API against them (defaults in .env.example already point here):
-#   OLLAMA_URL=http://localhost:11434
-#   QDRANT_URL=http://localhost:6333
-
+# Dev only — Qdrant container. Ollama usa produção (ollama.truevortx.duckdns.org).
 services:
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_models:/root/.ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-
   qdrant:
     image: qdrant/qdrant:latest
     ports:
-      - "6333:6333" # REST API
-      - "6334:6334" # gRPC
+      - "6333:6333"  # REST API
+      - "6334:6334"  # gRPC
     volumes:
       - qdrant_data:/qdrant/storage
 
 volumes:
-  ollama_models:
   qdrant_data:
