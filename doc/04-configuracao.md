@@ -8,6 +8,7 @@ Todas validadas com zod no `src/core/utils/env.ts`. Fail-fast na startup.
 | --- | --- | --- | --- | --- |
 | `NODE_ENV` | Não | `development` | `development` \| `test` \| `production` | Ambiente de execução |
 | `PORT` | Não | `8080` | number | Porta do servidor HTTP |
+| `API_KEY` | **Sim** | — | string | API key exigida em todos os requests (Authorization: Bearer), exceto `GET /health` |
 | `OLLAMA_URL` | **Sim** | — | URL | Endpoint do Ollama (ex: `http://192.168.1.100:11434`) |
 | `OLLAMA_EMBEDDING_MODEL` | Não | `bge-m3` | string | Modelo de embedding |
 | `QDRANT_URL` | **Sim** | — | URL | Endpoint do Qdrant (ex: `http://192.168.1.100:6333`) |
@@ -20,6 +21,9 @@ Todas validadas com zod no `src/core/utils/env.ts`. Fail-fast na startup.
 ```bash
 NODE_ENV=development
 PORT=8080
+
+# API key exigida em todos os requests (Authorization: Bearer)
+API_KEY=
 
 OLLAMA_URL=http://192.168.1.100:11434
 OLLAMA_EMBEDDING_MODEL=bge-m3
@@ -113,7 +117,8 @@ Edite `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude
 {
   "mcpServers": {
     "rag-o-matic": {
-      "url": "http://SEU_HOMELAB_IP:8080/mcp"
+      "url": "http://SEU_HOMELAB_IP:8080/mcp",
+      "headers": { "Authorization": "Bearer SUA_API_KEY" }
     }
   }
 }

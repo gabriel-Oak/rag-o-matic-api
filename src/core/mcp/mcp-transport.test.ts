@@ -5,6 +5,7 @@ import app from '../../fastify/app.js';
 // getEnv() (called when a session is created) requires these at request time.
 process.env.OLLAMA_URL ??= 'http://localhost:11434';
 process.env.QDRANT_URL ??= 'http://localhost:6333';
+process.env.API_KEY ??= 'test-key';
 
 const MCP_ACCEPT = 'application/json, text/event-stream';
 
@@ -26,7 +27,11 @@ describe('MCP over Streamable HTTP (POST /mcp)', () => {
     const init = await app.inject({
       method: 'POST',
       url: '/mcp',
-      headers: { 'content-type': 'application/json', accept: MCP_ACCEPT },
+      headers: {
+        'content-type': 'application/json',
+        accept: MCP_ACCEPT,
+        authorization: 'Bearer test-key',
+      },
       payload: {
         jsonrpc: '2.0',
         id: 1,
@@ -55,6 +60,7 @@ describe('MCP over Streamable HTTP (POST /mcp)', () => {
       headers: {
         'content-type': 'application/json',
         accept: MCP_ACCEPT,
+        authorization: 'Bearer test-key',
         'mcp-session-id': sessionId as string,
       },
       payload: { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
@@ -77,7 +83,11 @@ describe('MCP over Streamable HTTP (POST /mcp)', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/mcp',
-      headers: { 'content-type': 'application/json', accept: MCP_ACCEPT },
+      headers: {
+        'content-type': 'application/json',
+        accept: MCP_ACCEPT,
+        authorization: 'Bearer test-key',
+      },
       payload: { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} },
     });
 
@@ -93,6 +103,7 @@ describe('MCP session lifecycle (initialize → health → DELETE → session go
       headers: {
         'content-type': 'application/json',
         accept: MCP_ACCEPT,
+        authorization: 'Bearer test-key',
         ...(sessionId ? { 'mcp-session-id': sessionId } : {}),
       },
       payload,
@@ -150,7 +161,10 @@ describe('MCP session lifecycle (initialize → health → DELETE → session go
     const del = await app.inject({
       method: 'DELETE',
       url: '/mcp',
-      headers: { 'mcp-session-id': sessionId as string },
+      headers: {
+        authorization: 'Bearer test-key',
+        'mcp-session-id': sessionId as string,
+      },
     });
 
     expect(del.statusCode).toBe(200);
@@ -160,14 +174,21 @@ describe('MCP session lifecycle (initialize → health → DELETE → session go
     const delAgain = await app.inject({
       method: 'DELETE',
       url: '/mcp',
-      headers: { 'mcp-session-id': sessionId as string },
+      headers: {
+        authorization: 'Bearer test-key',
+        'mcp-session-id': sessionId as string,
+      },
     });
 
     expect(delAgain.statusCode).toBe(404);
     expect(delAgain.json()).toEqual({ error: 'Session not found' });
 
     //    - DELETE without any session id → 404 as well
-    const delNoHeader = await app.inject({ method: 'DELETE', url: '/mcp' });
+    const delNoHeader = await app.inject({
+      method: 'DELETE',
+      url: '/mcp',
+      headers: { authorization: 'Bearer test-key' },
+    });
 
     expect(delNoHeader.statusCode).toBe(404);
 
@@ -214,6 +235,7 @@ describe('MCP session lifecycle (initialize → health → DELETE → session go
       headers: {
         'content-type': 'application/json',
         accept: MCP_ACCEPT,
+        authorization: 'Bearer test-key',
         'mcp-session-id': sessionId as string,
       },
     });
@@ -226,6 +248,7 @@ describe('MCP session lifecycle (initialize → health → DELETE → session go
       headers: {
         'content-type': 'application/json',
         accept: MCP_ACCEPT,
+        authorization: 'Bearer test-key',
         'mcp-session-id': sessionId as string,
       },
     });

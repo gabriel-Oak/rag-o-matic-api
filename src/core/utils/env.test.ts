@@ -10,6 +10,7 @@ const validEnv: NodeJS.ProcessEnv = {
   QDRANT_API_KEY: "secret",
   QDRANT_COLLECTION: "vault_notes",
   QDRANT_DIMENSION: "1024",
+  API_KEY: "test-key",
 };
 
 describe("envSchema / loadEnv", () => {
@@ -24,6 +25,7 @@ describe("envSchema / loadEnv", () => {
       QDRANT_API_KEY: "secret",
       QDRANT_COLLECTION: "vault_notes",
       QDRANT_DIMENSION: 1024,
+      API_KEY: "test-key",
     });
     expect(Object.isFrozen(env)).toBe(true);
   });
@@ -32,6 +34,7 @@ describe("envSchema / loadEnv", () => {
     const env = loadEnv({
       OLLAMA_URL: "http://localhost:11434",
       QDRANT_URL: "http://localhost:6333",
+      API_KEY: "test-key",
     });
     expect(env.NODE_ENV).toBe("development");
     expect(env.PORT).toBe(8080);
@@ -56,6 +59,12 @@ describe("envSchema / loadEnv", () => {
     const rest: NodeJS.ProcessEnv = { ...validEnv };
     delete rest.OLLAMA_URL;
     expect(() => loadEnv(rest)).toThrow(/OLLAMA_URL/);
+  });
+
+  it("names the missing API_KEY when absent", () => {
+    const rest: NodeJS.ProcessEnv = { ...validEnv };
+    delete rest.API_KEY;
+    expect(() => loadEnv(rest)).toThrow(/API_KEY/);
   });
 
   it("rejects a non-numeric PORT", () => {
@@ -96,6 +105,7 @@ describe("getEnv", () => {
     vi.stubEnv("OLLAMA_URL", "http://localhost:11434");
     vi.stubEnv("QDRANT_URL", "http://localhost:6333");
     vi.stubEnv("PORT", "9090");
+    vi.stubEnv("API_KEY", "test-key");
 
     const first = getEnv();
     const second = getEnv();

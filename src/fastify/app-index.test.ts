@@ -11,6 +11,7 @@ const env = {
   QDRANT_URL: 'http://localhost:6333',
   QDRANT_COLLECTION: 'vault_notes',
   QDRANT_DIMENSION: 1024,
+  API_KEY: 'test-key',
 } as Env;
 
 vi.mock('../core/utils/env.js', () => ({
@@ -54,6 +55,7 @@ describe('POST /index (real app, Ollama mocked)', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/index',
+      headers: { authorization: 'Bearer test-key' },
       payload: { type: 'markdown', content, source: 'note.md' },
     });
 
@@ -76,7 +78,7 @@ describe('POST /index (real app, Ollama mocked)', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/index',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', authorization: 'Bearer test-key' },
       payload,
     });
 
