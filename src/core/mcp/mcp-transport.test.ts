@@ -5,6 +5,7 @@ import app from '../../fastify/app.js';
 // getEnv() (called when a session is created) requires these at request time.
 process.env.OLLAMA_URL ??= 'http://localhost:11434';
 process.env.QDRANT_URL ??= 'http://localhost:6333';
+process.env.API_KEY ??= 'test-key';
 
 const MCP_ACCEPT = 'application/json, text/event-stream';
 
