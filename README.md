@@ -370,6 +370,7 @@ próximas chamadas):
 curl -i -X POST http://localhost:8080/mcp \
   -H 'content-type: application/json' \
   -H 'accept: application/json, text/event-stream' \
+  -H "Authorization: Bearer $API_KEY" \
   -d '{
     "jsonrpc": "2.0",
     "id": 1,
@@ -389,6 +390,7 @@ MCP — chamar a tool `health` (após `initialize` +
 curl -s -X POST http://localhost:8080/mcp \
   -H 'content-type: application/json' \
   -H 'accept: application/json, text/event-stream' \
+  -H "Authorization: Bearer $API_KEY" \
   -H "mcp-session-id: $SESSION_ID" \
   -d '{
     "jsonrpc": "2.0",
@@ -405,6 +407,7 @@ MCP — `tools/list` (mesma sessão):
 curl -s -X POST http://localhost:8080/mcp \
   -H 'content-type: application/json' \
   -H 'accept: application/json, text/event-stream' \
+  -H "Authorization: Bearer $API_KEY" \
   -H "mcp-session-id: $SESSION_ID" \
   -d '{
     "jsonrpc": "2.0",
@@ -421,6 +424,7 @@ base64):
 curl -s -X POST http://localhost:8080/mcp \
   -H 'content-type: application/json' \
   -H 'accept: application/json, text/event-stream' \
+  -H "Authorization: Bearer $API_KEY" \
   -H "mcp-session-id: $SESSION_ID" \
   -d '{
     "jsonrpc": "2.0",
@@ -442,6 +446,7 @@ MCP — `tools/call query`:
 curl -s -X POST http://localhost:8080/mcp \
   -H 'content-type: application/json' \
   -H 'accept: application/json, text/event-stream' \
+  -H "Authorization: Bearer $API_KEY" \
   -H "mcp-session-id: $SESSION_ID" \
   -d '{
     "jsonrpc": "2.0",
@@ -460,6 +465,7 @@ MCP — `tools/call list_sources`:
 curl -s -X POST http://localhost:8080/mcp \
   -H 'content-type: application/json' \
   -H 'accept: application/json, text/event-stream' \
+  -H "Authorization: Bearer $API_KEY" \
   -H "mcp-session-id: $SESSION_ID" \
   -d '{
     "jsonrpc": "2.0",
@@ -478,6 +484,7 @@ MCP — `tools/call delete_content`:
 curl -s -X POST http://localhost:8080/mcp \
   -H 'content-type: application/json' \
   -H 'accept: application/json, text/event-stream' \
+  -H "Authorization: Bearer $API_KEY" \
   -H "mcp-session-id: $SESSION_ID" \
   -d '{
     "jsonrpc": "2.0",
