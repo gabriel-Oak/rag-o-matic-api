@@ -89,6 +89,12 @@ Os defaults do `.env.example` já apontam para `localhost:11434` e
 > nome de coleção novo (ex.: `obsidian_vault_v2`) e reindexe — reindex
 > completo via `POST /index` por source.
 
+## Autenticação
+
+Todo request precisa do header `Authorization: Bearer $API_KEY`, com
+exceção de `GET /health`, que permanece aberto. `API_KEY` é obrigatória
+na env — sem ela o server não sobe (fail-fast na startup).
+
 ## Endpoints
 
 ### REST
@@ -282,7 +288,8 @@ Config de cliente MCP (Claude Desktop e compatíveis):
 {
   "mcpServers": {
     "rag-o-matic": {
-      "url": "http://SEU_HOST:8080/mcp"
+      "url": "http://SEU_HOST:8080/mcp",
+      "headers": { "Authorization": "Bearer SUA_API_KEY" }
     }
   }
 }
@@ -303,6 +310,7 @@ no Linux; `base64 -i nota.md` no macOS):
 ```sh
 curl -s -X POST http://localhost:8080/index \
   -H 'content-type: application/json' \
+  -H "Authorization: Bearer $API_KEY" \
   -d "{
     \"type\": \"markdown\",
     \"source\": \"nota.md\",
@@ -315,6 +323,7 @@ curl -s -X POST http://localhost:8080/index \
 ```sh
 curl -s -X POST http://localhost:8080/index \
   -H 'content-type: application/json' \
+  -H "Authorization: Bearer $API_KEY" \
   -d "{
     \"type\": \"pdf\",
     \"source\": \"doc.pdf\",
@@ -327,6 +336,7 @@ curl -s -X POST http://localhost:8080/index \
 ```sh
 curl -s -X POST http://localhost:8080/index \
   -H 'content-type: application/json' \
+  -H "Authorization: Bearer $API_KEY" \
   -d "{
     \"type\": \"markdown\",
     \"source\": \"nota.md\",
@@ -339,7 +349,8 @@ curl -s -X POST http://localhost:8080/index \
 opcional restringe a busca por pasta):
 
 ```sh
-curl -s 'http://localhost:8080/query?q=notas+sobre+terapia&limit=3'
+curl -s 'http://localhost:8080/query?q=notas+sobre+terapia&limit=3' \
+  -H "Authorization: Bearer $API_KEY"
 # {"query":"notas sobre terapia","count":3,"results":[{"score":0.87,"source":"Terapia 2026-05-20.md","type":"markdown","chunkIndex":2,"headings":["# Terapia 2026-05-20","## Resumo"],"content":"## Resumo\n\n...","indexedAt":"2026-09-24T12:00:00.000Z","frontmatter":"tags: [terapia]"}]}
 ```
 
@@ -347,7 +358,8 @@ curl -s 'http://localhost:8080/query?q=notas+sobre+terapia&limit=3'
 (idempotente — source inexistente → `deleted: 0`):
 
 ```sh
-curl -s -X DELETE http://localhost:8080/index/nota.md
+curl -s -X DELETE http://localhost:8080/index/nota.md \
+  -H "Authorization: Bearer $API_KEY"
 # {"source":"nota.md","deleted":12}
 ```
 
