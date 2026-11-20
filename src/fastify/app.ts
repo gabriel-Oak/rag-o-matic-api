@@ -1,6 +1,7 @@
 import fastify from 'fastify';
 import cors from '@fastify/cors';
 import { mountMcp } from '../core/mcp/mcp-transport.js';
+import { registerApiKeyAuth } from './plugins/api-key-auth.js';
 import createRouter from './routes.js';
 
 const app = fastify({ bodyLimit: 50 * 1024 * 1024 });
@@ -34,6 +35,9 @@ app.addContentTypeParser('text/plain', (req, body, done) => {
 });
 
 void app.register(cors);
+// Instance preHandler hook: must be registered before the routes so REST
+// routes and /mcp (same instance) all require `Authorization: Bearer <API_KEY>`.
+registerApiKeyAuth(app);
 createRouter(app);
 mountMcp(app);
 

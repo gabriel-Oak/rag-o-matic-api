@@ -2,6 +2,10 @@ import 'reflect-metadata';
 import { describe, expect, it } from 'vitest';
 import app from './app.js';
 
+process.env.OLLAMA_URL ??= 'http://localhost:11434';
+process.env.QDRANT_URL ??= 'http://localhost:6333';
+process.env.API_KEY ??= 'test-key';
+
 describe('fastify app', () => {
   it('GET /health returns 200 with { status: "ok" }', async () => {
     const res = await app.inject({ method: 'GET', url: '/health' });
@@ -10,7 +14,11 @@ describe('fastify app', () => {
   });
 
   it('GET unknown route returns 404 with HttpError shape', async () => {
-    const res = await app.inject({ method: 'GET', url: '/nope' });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/nope',
+      headers: { authorization: 'Bearer test-key' },
+    });
     expect(res.statusCode).toBe(404);
     const body = res.json();
     // fastify serializes the sent HttpError through its default error handler

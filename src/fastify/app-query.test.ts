@@ -12,6 +12,7 @@ const env = {
   QDRANT_URL: 'http://localhost:6333',
   QDRANT_COLLECTION: 'vault_notes',
   QDRANT_DIMENSION: 1024,
+  API_KEY: 'test-key',
 } as Env;
 
 // Read by the mock factories' closures at CALL time (not at factory execution
@@ -117,6 +118,7 @@ describe('GET /query (real app, services mocked)', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/query?q=terapia&limit=3',
+      headers: { authorization: 'Bearer test-key' },
     });
 
     expect(res.statusCode).toBe(200);
@@ -160,6 +162,7 @@ describe('GET /query (real app, services mocked)', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/query?q=',
+      headers: { authorization: 'Bearer test-key' },
     });
 
     expect(res.statusCode).toBe(400);
@@ -172,6 +175,7 @@ describe('GET /query (real app, services mocked)', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/query?q=x&limit=99',
+      headers: { authorization: 'Bearer test-key' },
     });
 
     expect(res.statusCode).toBe(400);
@@ -186,6 +190,7 @@ describe('GET /query (real app, services mocked)', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/query?q=terapia',
+      headers: { authorization: 'Bearer test-key' },
     });
 
     expect(res.statusCode).toBe(200);

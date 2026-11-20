@@ -14,6 +14,7 @@ export const envSchema = z.object({
     .transform((value) => (value ? value : undefined)),
   QDRANT_COLLECTION: z.string().min(1).default("vault_notes"),
   QDRANT_DIMENSION: z.coerce.number().positive().default(1024),
+  API_KEY: z.string().min(1),
 });
 
 export type Env = z.infer<typeof envSchema>;
